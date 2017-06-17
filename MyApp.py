@@ -9,19 +9,14 @@ from panda3d.bullet import BulletRigidBodyNode
 from panda3d.bullet import BulletBoxShape
 import random
 from  Walker import Walker, Bone, Joint
-class Bone(object):
-  def __init__(self):
-    self.length = random.uniform(0.5, 2)
-
 
 class MyApp(ShowBase):
-  def __init__(self):
+  def __init__(self, walker):
     ShowBase.__init__(self)
     base.cam.setPos(0, -50, 20)
     base.cam.lookAt(0, 0, 0)
-    self.N = 10
     self.c = 0
-    self.INIT_HEIGHT = 10
+    self.INIT_HEIGHT = 2
     self.MASS = 1
     # World
     self.world = BulletWorld()
@@ -30,7 +25,7 @@ class MyApp(ShowBase):
     self.init_plane()
     self.add_light()
     self.add_debug()
-    self.walker = Walker(self, self.N)
+    self.walker = walker
 
   def add_debug(self):
     debugNode = BulletDebugNode('Debug')
@@ -83,7 +78,6 @@ class MyApp(ShowBase):
     card.lookAt(0, 0, -1)
     tex = loader.loadTexture('maps/grid.rgb')
     card.setTexture(tex)
-    card.setShaderAuto()
 
 
 
@@ -131,30 +125,50 @@ class MyApp(ShowBase):
     for i in range(len(self.walker.joints)):
       self.walker.joints[i].constraint.enableAngularMotor(True, action[i], 1)
     
-  def update(self, task):
-    dt = globalClock.getDt()
+
+  def get_action(self, state):
+    return [100*math.cos(globalClock.getFrameTime())] * self.walker.N
+  
+  def get_reward(self):
+    return self.get_com().length()
+  
+  def get_com(self):
+    positions = [bone.np.getPos() for bone in self.walker.bones]
+    com = Vec3(0,0,0)
+    for p in positions:
+      com += p
+    com /= self.walker.N
+    return com
+
+  def spinCameraTask(self, task):
+      angleDegrees = task.time * 6.0
+      angleRadians = angleDegrees * (math.pi / 180.0)
+      new_cam_pos = self.get_com() + Vec3(20 * math.sin(angleRadians), -20.0 * math.cos(angleRadians), 3)
+      self.camera.setPos(new_cam_pos)
+      self.camera.setHpr(angleDegrees, 0, 0)
+      return Task.cont
+
+  def update_task(self, task):
+    self.update_physics()
+    return task.cont
+   
+  def update_physics(self):
+    if self.dt > 0:
+      dt = self.dt
+    else:
+      dt = globalClock.getDt()
     state = self.get_state()
     action = self.get_action(state)
     self.apply_action(action)
     self.world.doPhysics(dt)
-    return task.cont
-
-  def get_action(self, state):
-    return [100*math.cos(globalClock.getFrameTime())] * self.N
-  
-  def spinCameraTask(self, task):
-      angleDegrees = task.time * 6.0
-      angleRadians = angleDegrees * (math.pi / 180.0)
-      self.camera.setPos(20 * math.sin(angleRadians), -20.0 * math.cos(angleRadians), 3)
-      self.camera.setHpr(angleDegrees, 0, 0)
-      return Task.cont
+    print(self.get_reward())
    
-  def runy(self):
-    taskMgr.add(self.update, 'update')
+  def runy(self, with_graphics = True, dt = 0):
+    self.dt = dt
+    taskMgr.add(self.update_task, 'update')
     taskMgr.add(self.spinCameraTask, "SpinCameraTask")
-    base.run()
-
-def main():
-  MyApp().runy()
-if __name__ == "__main__":
-  main()
+    if with_graphics:
+      base.run()
+    else:
+      while True:
+        self.update_physics(None)
