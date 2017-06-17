@@ -29,7 +29,7 @@ class MyApp(ShowBase):
 
   def add_debug(self):
     debugNode = BulletDebugNode('Debug')
-    debugNode.showWireframe(False)
+    debugNode.showWireframe(True)
     debugNode.showConstraints(True)
     debugNode.showBoundingBoxes(False)
     debugNode.showNormals(True)
@@ -91,7 +91,6 @@ class MyApp(ShowBase):
     node.addShape(shape, ts)
 
     bone.np = render.attachNewNode(node)
-    # bone.np.setScale(Vec3(bone.length, 1, 1))
     bone.np.setPos(0, self.c, self.INIT_HEIGHT)
     bone.np.setShaderAuto()
     self.c += 0
@@ -100,12 +99,26 @@ class MyApp(ShowBase):
     model.setScale(Vec3(2*bone.length, 1, 1))
     model.reparentTo(bone.np)
 
+  def add_joint_ball(self, bone):
+    if bone.has_joint_ball:
+      return 
+    model = loader.loadModel('smiley.egg')
+    model.reparentTo(render)
+    model.setScale(Vec3(self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH))
+    model.setTransform(TransformState.makePos(Point3(bone.length * 2 + self.walker.BUFFER_LENGTH, bone.WIDTH, bone.WIDTH)))
+    # for i in dir(model): print(i)
+    tex = loader.loadTexture('maps/noise.rgb')
+    model.setTexture(tex, 1)
+    model.reparentTo(bone.np)
+
+    bone.has_joint_ball = True
+     
   def add_joint(self, parent_bone, child_bone, hpr, pos):
-    BUFFER_LENGTH = 0.7
-    parent_frame = TransformState.makePosHpr(Vec3(parent_bone.length * 2 * pos +BUFFER_LENGTH, parent_bone.WIDTH,parent_bone.WIDTH), Vec3(90,0,0))
+    self.add_joint_ball(parent_bone)  
+    parent_frame = TransformState.makePosHpr(Vec3(parent_bone.length * 2 + self.walker.BUFFER_LENGTH, parent_bone.WIDTH, parent_bone.WIDTH), Vec3(90,0,0))
     # parent_frame = parent_frame.setScale( Vec3(parent_bone.length, 1, 1))
     # child_frame = TransformState.makePosHpr(Vec3(2 * child_bone.length + BUFFER_LENGTH,Bone.WIDTH,Bone.WIDTH), Vec3(*hpr))
-    child_frame = TransformState.makePosHpr(Vec3(- BUFFER_LENGTH, child_bone.WIDTH,child_bone.WIDTH), Vec3(*hpr))
+    child_frame = TransformState.makePosHpr(Vec3(-self.walker.BUFFER_LENGTH, child_bone.WIDTH,child_bone.WIDTH), Vec3(*hpr))
     # child_frame = child_frame.setScale(Vec3(child_bone.length, 1, 1))
     constraint = BulletHingeConstraint(parent_bone.np.node(), child_bone.np.node(), parent_frame, child_frame)
     constraint.setLimit(-70, 70)

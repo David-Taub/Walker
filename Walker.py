@@ -1,6 +1,7 @@
 import random
 import MyApp
 class Walker(object):
+  BUFFER_LENGTH = 0.5
   def __init__(self, N):
     self.N = N
     self.app = MyApp.MyApp(self)
@@ -30,6 +31,7 @@ class Joint(object):
 
 class Bone(object):
   def __init__(self, app, length = None):
+    self.has_joint_ball = False
     self.WIDTH = 0.5
     if length is None:
       self.length = random.uniform(1, 4)
