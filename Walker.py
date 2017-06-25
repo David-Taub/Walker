@@ -93,19 +93,14 @@ class Walker(object):
   def gen_actions(self):
     return self.action_generator(self.get_state())
 
+  def get_score(self):
+    return self.app.get_com()[1]
+  
   def get_reward(self):
-    if self.last_score is None:
-      self.last_score = self.app.get_com()[2]
-      return 0
-    new = self.app.get_com()[2]
-    ret = new - self.last_score
-    self.last_score = new
+    new_score = self.score()
+    ret = new_score - self.last_score if self.last_score is not None else 0
+    self.last_score = new_score
     return ret
-
-  def _gen_action(self, i):
-    import time
-    t = time.time()
-    return  math.cos(t)
 
 class Joint(object):
   def __init__(self, parent_bone, child_bone, app, heading, pitch):
