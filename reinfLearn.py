@@ -1,4 +1,5 @@
 # python C:\Users\booga\Dropbox\bio\projects\Walker\reinfLearn.py
+
 import numpy as np
 import os, random, math, itertools, sys
 import tensorflow as tf
@@ -6,6 +7,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import matplotlib.pyplot as plt
 from Walker import Walker
+
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -18,11 +20,11 @@ END_EXPLOIT_PROB    = 0.1 #Final chance of random action
 NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
 ANNEALING_STEPS     = 10000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
-MAX_EPISODE_LENGTH  = 100 #The max allowed length of our episode.
+EPISODE_LENGTH      = 200 #The max allowed length of our episode.
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 h_size              = 512 #The size of the final convolutional layer before splitting it into Advantage and Value streams.
 tau                 = 0.001 #Rate to update target network toward primary network
-
+SHOW_WHILE_TRAINING = False
 class QNetwork(object):
     def gen_layer(self, input_layer, in_size, out_size):
         weights = tf.Variable(
@@ -119,6 +121,7 @@ class Learner(object):
     def _load_model(self):
         print('Loading Model...')
         ckpt = tf.train.get_checkpoint_state(BASE_DIR)
+        print('Loading %s' % ckpt.model_checkpoint_path)
         self.saver.restore(self.sess, ckpt.model_checkpoint_path)
 
     def __init__(self):
@@ -135,6 +138,7 @@ class Learner(object):
         #create lists to contain total rewards and steps per episode
         self.episodes_rewards_list = []
         self.total_steps = 0
+        self.sess = tf.Session()
 
         #Make a path for our model to be saved in.
         if not os.path.exists(BASE_DIR):
@@ -142,30 +146,23 @@ class Learner(object):
             self.load_model = False
         else:
             self.load_model = True
-
-
-    def train(self):
-        import objgraph
-
-
         print("Start of training")
-        self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
         if self.load_model:
             self._load_model()
+
+
+    def train(self):
         self.update_target() 
         for i in range(NUM_EPISODES):
-            # print("Episode %d" % i)
+            print("Episode %d" % i)
             self._run_episode()
             #Periodically save the model. 
-            if i % 1000 == 0:
+            if i % 50 == 0:
                 self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
                 print("Saved Model")
             if len(self.episodes_rewards_list) % 10 == 0:
-
-                print(len(self.walker.app.world.rigid_bodies))
-
-                print(self.total_steps, np.mean(self.episodes_rewards_list[-10:]), self.exploit_prob)
+                print(i, self.total_steps, np.mean(self.episodes_rewards_list[-10:]), self.exploit_prob)
         self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
 
     def _run_step(self, state, replay_buffer):
@@ -198,9 +195,9 @@ class Learner(object):
     def _run_episode(self):
         episode_buffer = ExperienceBuffer()
         #Reset environment and get first new observation
-        state = self.walker.reset()
+        state = self.walker.reset(SHOW_WHILE_TRAINING)
         episode_rewards = 0
-        for j in range(MAX_EPISODE_LENGTH):
+        for j in range(EPISODE_LENGTH):
             state, reward  = self._run_step(state, episode_buffer)
             self.total_steps += 1
             episode_rewards += reward
@@ -214,10 +211,15 @@ class Learner(object):
         self.episodes_rewards_list.append(episode_rewards)
 
     def show(self):
-        self.walker.start(True, lambda state: self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0])
+        state = self.walker.reset(True)
+        for i in range(EPISODE_LENGTH):
+            action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
+            state, _ = self.walker.step(action)
+
 def main():
   l = Learner()
   l.train()
+  l.show()
   l.show()
 
 
