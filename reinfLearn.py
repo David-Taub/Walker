@@ -1,5 +1,4 @@
-    # python C:\Users\booga\Dropbox\bio\projects\Walker\reinfLearn.py
-# import gym
+# python C:\Users\booga\Dropbox\bio\projects\Walker\reinfLearn.py
 import numpy as np
 import os, random, math, itertools, sys
 import tensorflow as tf
@@ -8,6 +7,8 @@ import tensorflow.contrib.slim as slim
 import matplotlib.pyplot as plt
 from Walker import Walker
 
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 batch_size          = 32 #How many experiences to use for each training step.
 update_freq         = 4 #How often to perform a training step.
@@ -18,7 +19,6 @@ NUM_EPISODES        = 20000 #How many episodes of game environment to train netw
 ANNEALING_STEPS     = 10000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
 MAX_EPISODE_LENGTH  = 100 #The max allowed length of our episode.
-load_model          = True #Whether to load a saved model.
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 h_size              = 512 #The size of the final convolutional layer before splitting it into Advantage and Value streams.
 tau                 = 0.001 #Rate to update target network toward primary network
@@ -139,6 +139,10 @@ class Learner(object):
         #Make a path for our model to be saved in.
         if not os.path.exists(BASE_DIR):
             os.makedirs(BASE_DIR)
+            self.load_model = False
+        else:
+            self.load_model = True
+
 
     def train(self):
         import objgraph
@@ -147,7 +151,7 @@ class Learner(object):
         print("Start of training")
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
-        if load_model == True:
+        if self.load_model:
             self._load_model()
         self.update_target() 
         for i in range(NUM_EPISODES):
