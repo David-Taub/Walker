@@ -2,37 +2,22 @@
 import random, math, sys, pickle, os
 import numpy as np
 import MyApp
-
-class Shape(object):
-  INIT_HEIGHT = 2
-  def __init__(self, N):
-    self.N = N
-    self.lengths = [random.uniform(1, 4) for i in range(N)]  
-    self.headings = [random.randrange(-180, 180) for i in range(N)]  
-    self.pitches = [random.randrange(-90, 90) for i in range(N)]
-    self.connections = [-1] 
-    for i in range(N-1):
-      c = random.randrange(i+1)
-      while self.connections.count(c) == 2:
-        c = random.randrange(i+1)
-      self.connections.append(c)
-    # self.connections = [-1] + [random.randrange(i+1) for i in range(N-1)]
-    self.positions = [(0, i, self.INIT_HEIGHT) for i in range(N)]
-
+from Shape import Shape
 class Walker(object):
   BUFFER_LENGTH = 0.5
   TIME_STEP = 0.1
   PHYSICAL_STEPS_IN_STEP = 10
+  NUM_OF_BONES = 8
 
   def __init__(self):
     self.app = MyApp.MyApp(self)
     self.last_score = None
     self.load_shape()
-    
+
 
   def _get_pickle_path(self):
     return os.path.join(os.path.dirname(sys.argv[0]), 'shape.pickle')
-  
+
   def reset(self, init_display):
     self.app.remove_shape()
     self.last_score = None
@@ -49,13 +34,13 @@ class Walker(object):
         self.shape = pickle.load(f)
       self._build_bones_and_joints()
     else:
-      self.shape = Shape(20)
+      self.shape = Shape(self.NUM_OF_BONES)
       self._build_bones_and_joints()
       for i in range(300):
         self.step([0] * len(self.joints))
       self.save_shape()
 
-  
+
   def _build_bones_and_joints(self):
     self.joints = []
     self.bones = []
@@ -65,11 +50,11 @@ class Walker(object):
         if self.shape.connections[i] != -1:
           joint = Joint(self.bones[self.shape.connections[i]], bone, self.app, self.shape.headings[i], self.shape.pitches[i])
           self.joints.append(joint)
-    
+
 
   def state_size(self):
     return len(self.get_state())
-  
+
   def action_size(self):
     return len(self.joints)
 
@@ -84,14 +69,14 @@ class Walker(object):
   def step(self, action):
     for i in range(self.PHYSICAL_STEPS_IN_STEP):
       self.app.physical_step(action, self.TIME_STEP)
-    state, reward = self.get_state(), self.get_reward()
-    self.app.debug_screen_print(action, state, reward)
+    state, reward, score = self.get_state(), self.get_reward(), self.score()
+    self.app.debug_screen_print(action, state, reward, score)
     return state, reward
 
   def get_state(self):
     state = []
     state += self.app.get_joint_angles()
-    state += self.app.get_bones_height()
+    state += self.app.get_bones_z()
     return np.array(state)
 
   def gen_actions(self):
@@ -102,7 +87,7 @@ class Walker(object):
     return self.action_in_step
 
   def score(self):
-    return self.app.get_com()[1]
+    return self.app.get_com()[2] + self.app.get_com()[1]
 
   def get_reward(self):
     new_score = self.score()
@@ -112,8 +97,8 @@ class Walker(object):
 
 class Joint(object):
   def __init__(self, parent_bone, child_bone, app, heading, pitch):
-      hpr = [heading, pitch, 0] 
-      hpr = [0, pitch, 0] 
+      hpr = [heading, pitch, 0]
+      hpr = [0, pitch, 0]
       pos = 1
       self.constraint = app.add_joint(parent_bone, child_bone, hpr, pos)
       self.parent_bone = parent_bone
@@ -124,7 +109,7 @@ class Bone(object):
   def __init__(self, app, length, position, index):
     self.has_joint_ball = False
     self.width = 0.2
-    self.height = 0.2
+    self.height = 0.6
     self.length = length
     app.init_bone(self, position, index)
 

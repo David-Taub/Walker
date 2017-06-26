@@ -8,6 +8,7 @@ from panda3d.bullet import *
 
 class MyApp(ShowBase):
   MASS = 1
+  MOTOR_POWER = 2000
   def __init__(self, walker):
     # World
     self.is_displaying = False
@@ -21,21 +22,22 @@ class MyApp(ShowBase):
       return
     print("Setting up display")
     self.is_displaying = True
-    ShowBase.__init__(self) 
+    ShowBase.__init__(self)
     self.add_light()
     taskMgr.add(self.spinCameraTask, "SpinCameraTask")
     base.cam.setPos(0, -50, 20)
     base.cam.lookAt(0, 0, 0)
+    self.add_debug()
 
   def add_debug(self):
-    debugNode = BulletDebugNode('Debug')
-    debugNode.showWireframe(True)
-    debugNode.showConstraints(True)
-    debugNode.showBoundingBoxes(False)
-    debugNode.showNormals(True)
-    debugNP = render.attachNewNode(debugNode)
-    debugNP.show()
-    self.world.setDebugNode(debugNP.node())
+    debug_node = BulletDebugNode('Debug')
+    debug_node.showWireframe(True)
+    debug_node.showConstraints(True)
+    debug_node.showBoundingBoxes(False)
+    debug_node.showNormals(True)
+    debug_np = render.attachNewNode(debug_node)
+    debug_np.show()
+    self.world.setDebugNode(debug_np.node())
 
   def add_light(self):
     ambientLight = AmbientLight('ambientLight')
@@ -83,22 +85,22 @@ class MyApp(ShowBase):
 
   def init_bone(self, bone, position, index):
     # Box
-    shape = BulletBoxShape(Vec3(bone.length, bone.width, bone.width))
-    ts = TransformState.makePos(Point3(bone.length, bone.width, bone.width))
+    shape = BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
+    ts = TransformState.makePos(Point3(bone.length, bone.height, bone.width))
     bone.node = BulletRigidBodyNode('Bone%d' % index)
     bone.node.setMass(self.MASS)
     bone.node.setFriction(1)
     bone.node.addShape(shape, ts)
     bone.node.setTransform(TransformState.makePosHpr(position[0], position[1]))
     self.world.attachRigidBody(bone.node)
-    
+
     if self.is_displaying:
       bone.np = render.attachNewNode(bone.node)
       # bone.np.setPos(position[0])
       # bone.np.setHpr(position[1])
       bone.np.setShaderAuto()
       bone.model = loader.loadModel('models/box.egg')
-      bone.model.setScale(Vec3(2*bone.length, 2*bone.width, 2*bone.width))
+      bone.model.setScale(Vec3(2*bone.length, 2*bone.height, 2*bone.width))
       bone.model.reparentTo(bone.np)
       bone.np.setColor(0.6, 0.6, 1.0, 1.0)
 
@@ -108,7 +110,7 @@ class MyApp(ShowBase):
     model = loader.loadModel('smiley.egg')
     model.reparentTo(render)
     scale_vec = Vec3(self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH)
-    model.setTransform(TransformState.makePos(Point3(bone.length * 2 + self.walker.BUFFER_LENGTH, bone.width, bone.width)))
+    model.setTransform(TransformState.makePos(Point3(bone.length * 2 + self.walker.BUFFER_LENGTH, bone.height, bone.width)))
     model.setScale(scale_vec)
     tex = loader.loadTexture('maps/noise.rgb')
     model.setTexture(tex, 1)
@@ -118,8 +120,8 @@ class MyApp(ShowBase):
 
   def add_joint(self, parent_bone, child_bone, hpr, pos):
     # self.add_joint_ball(parent_bone)
-    parent_frame_pos = Vec3(parent_bone.length * 2 + self.walker.BUFFER_LENGTH, parent_bone.width, parent_bone.width)
-    child_frame_pos = Vec3(-self.walker.BUFFER_LENGTH, child_bone.width,child_bone.width)
+    parent_frame_pos = Vec3(parent_bone.length * 2 + self.walker.BUFFER_LENGTH, parent_bone.height, parent_bone.width)
+    child_frame_pos = Vec3(-self.walker.BUFFER_LENGTH, child_bone.height, child_bone.width)
     parent_frame = TransformState.makePos(parent_frame_pos)
     child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(*hpr))
     constraint = BulletHingeConstraint(parent_bone.node, child_bone.node, parent_frame, child_frame)
@@ -131,16 +133,16 @@ class MyApp(ShowBase):
   def get_joint_angles(self):
     return [joint.constraint.getHingeAngle() for joint in self.walker.joints]
 
-  def get_bones_height(self):
+  def get_bones_z(self):
     return [bone.node.getTransform().getPos()[2] for bone in self.walker.bones]
 
   def apply_action(self, action):
     for i in range(len(self.walker.joints)):
-      self.walker.joints[i].constraint.enableAngularMotor(True, action[i], 3)
+      self.walker.joints[i].constraint.enableAngularMotor(True, action[i], self.MOTOR_POWER)
 
 
   def get_action(self, state):
-    return 
+    return
 
   def get_score(self):
     com = self.get_com()
@@ -195,14 +197,13 @@ class MyApp(ShowBase):
       # render frame
       taskMgr.step()
 
-  def debug_screen_print(self, action, state, reward):
+  def debug_screen_print(self, action, state, reward, score):
     if not self.is_displaying:
       return
     try:
       self.textObject.destroy()
     except:
-      pass  
-    text = "Reward: %.2f" % (reward)
-    text = "Reward: %.2f Actions: %s" % (reward, [int(a) for a in action])
+      pass
+    text = "Score: %.2f Actions: %s" % (score, [int(a) for a in action])
     self.textObject = OnscreenText(text = text, pos = (0.1, 0.1), scale = 0.07, align = TextNode.ALeft)
     self.textObject.reparentTo(base.a2dBottomLeft)
