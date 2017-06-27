@@ -77,6 +77,7 @@ class Walker(object):
     state = []
     state += self.app.get_joint_angles()
     state += self.app.get_bones_z()
+    state += self.app.head_hpr()
     return np.array(state)
 
   def gen_actions(self):

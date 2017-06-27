@@ -27,7 +27,7 @@ class MyApp(ShowBase):
     taskMgr.add(self.spinCameraTask, "SpinCameraTask")
     base.cam.setPos(0, -50, 20)
     base.cam.lookAt(0, 0, 0)
-    self.add_debug()
+    # self.add_debug()
 
   def add_debug(self):
     debug_node = BulletDebugNode('Debug')
@@ -182,13 +182,7 @@ class MyApp(ShowBase):
       self.ground_node.removeAllChildren()
 
   def color_contacts(self):
-    for bone in self.walker.bones:
-      bone.np.setColor(0.6, 0.6, 1.0, 1.0)
-    for bone in self.walker.bones:
-      result = self.world.contactTest(bone.np.node())
-      for contact in result.getContacts():
-        np = self.render.find(contact.getNode0().getName())
-        np.setColor(1.0, 0.6, 0.6, 1.0)
+    self.walker.bones[0].np.setColor(1.0, 0.6, 0.6, 1.0)
 
   def physical_step(self, action, dt):
     self.apply_action(action)
@@ -196,6 +190,9 @@ class MyApp(ShowBase):
     if self.is_displaying:
       # render frame
       taskMgr.step()
+  
+  def head_hpr(self):
+    return self.walker.bones[0].node.getTransform().getPos()
 
   def debug_screen_print(self, action, state, reward, score):
     if not self.is_displaying:
@@ -204,6 +201,7 @@ class MyApp(ShowBase):
       self.textObject.destroy()
     except:
       pass
+
     text = "Score: %.2f Actions: %s" % (score, [int(a) for a in action])
     self.textObject = OnscreenText(text = text, pos = (0.1, 0.1), scale = 0.07, align = TextNode.ALeft)
     self.textObject.reparentTo(base.a2dBottomLeft)

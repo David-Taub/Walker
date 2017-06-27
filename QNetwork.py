@@ -17,11 +17,12 @@ class QNetwork(object):
         return out
 
     def __init__(self, state_size, action_size):
+        self.total_q = 0
         LS1 = 40
         LS2 = 30
         LA1 = 20
         MIX1 = 20
-        BETA_W = 0.5
+        BETA_W = 0.1
         self.weights = []
         self.action_size = action_size
         self.state_size = state_size
@@ -32,7 +33,7 @@ class QNetwork(object):
         state_hidden2 = self.gen_layer(state_hidden1, LS1, LS2)
         action_hidden1 = self.gen_layer(self.action_input, action_size, LA1)
         merged = tf.concat([state_hidden2, action_hidden1], axis=1)
-        mixed = self.gen_layer(merged, LA1 + LS2, MIX1)
+        mixed = self.gen_layer(merged, LA1 + LS2, MIX1, False)
         self.Q_est = self.gen_layer(mixed, MIX1, 1, False)
 
         #Then combine them together to get our final Q-values.
@@ -58,16 +59,19 @@ class QNetwork(object):
         action_indices = list(range(self.action_size))
         random.shuffle(action_indices)
         pool = itertools.cycle(action_indices)
-        qs = []
         for i in range(self.action_size * REPETITIONS):
             index = next(pool)
             q_options = [self.get_q_action_modified(states, actions, index, new_val, sess) for new_val in action_values]
             q_options = np.concatenate(q_options, axis=1)
             actions[:, index] = action_values[np.argmax(q_options, axis=1)]
-            qs.append(np.max(q_options, axis=1)[0])
-        print("%.2f" % (qs[-1]))
+            
+        self.total_q += np.max(q_options, axis=1)[0]
         return actions
 
+    def pop_total_q(self):
+        ret = self.total_q
+        self.total_q = 0
+        return ret
     def get_q_action_modified(self, states, actions, index, new_val, sess):
         modified_actions = np.copy(actions)
         modified_actions[:, index] = new_val
