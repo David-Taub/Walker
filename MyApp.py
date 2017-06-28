@@ -44,22 +44,24 @@ class MyApp(ShowBase):
     ambientLightNP = render.attachNewNode(ambientLight)
     render.setLight(ambientLightNP)
     # SpotLight
-    self.tracker_light = render.attachNewNode(Spotlight("tracker"))
-    self.tracker_light.setPos(0,80,30)
-    self.tracker_light.lookAt(0,0,0)
-    self.tracker_light.node().setShadowCaster(True, 1024, 1024)
-    self.tracker_light.node().getLens().setFov(90)
-    render.setLight(self.tracker_light)
+    self.tracker_light_np = render.attachNewNode(Spotlight("tracker"))
+    self.tracker_light_np.setPos(0,80,30)
+    self.tracker_light_np.lookAt(0,0,0)
+    self.tracker_light_np.node().setShadowCaster(True, 1024, 1024)
+    self.tracker_light_np.node().getLens().setFov(90)
+    render.setLight(self.tracker_light_np)
     slight = render.attachNewNode(Spotlight("Spot2"))
     slight.setPos(80,0,30)
     slight.lookAt(0,0,0)
     slight.node().setShadowCaster(True, 1024, 1024)
     slight.node().getLens().setFov(90)
     render.setLight(slight)
+    render.setAntialias(AntialiasAttrib.MAuto)
     render.setShaderAuto()
 
   def light_track(self):
-    self.tracker_light.setPos(self.get_com()+Vec3(0,80,30))
+    self.tracker_light_np.setPos(self.get_com()+Vec3(0,80,30))
+    self.tracker_light_np.lookAt(self.get_com())
 
 
   def init_plane(self):
@@ -165,10 +167,10 @@ class MyApp(ShowBase):
     #   if self.is_displaying:
     #     bone.model.removeNode()
     #     bone.np.removeNode()
-    
+
     if self.is_displaying:
       [np.removeNode() for np in render.getChildren() if np.getName().startswith("Bone")]
-        
+
 
     for body in self.world.getRigidBodies():
       self.world.removeRigidBody(body)
@@ -188,7 +190,7 @@ class MyApp(ShowBase):
     if self.is_displaying:
       # render frame
       taskMgr.step()
-  
+
   def head_hpr(self):
     return self.walker.bones[0].node.getTransform().getPos()
 
