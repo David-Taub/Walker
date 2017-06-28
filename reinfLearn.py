@@ -19,7 +19,7 @@ END_EXPLOIT_PROB    = 0.2 #Final chance of random action
 NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
 ANNEALING_EPISODES  = 300 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
-EPISODE_LENGTH      = 50 #The max allowed length of our episode.
+EPISODE_LENGTH      = 110 #The max allowed length of our episode.
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 tau                 = 0.001 #Rate to update target network toward primary network
 EPISODES_BETWEEN_SAVE = 100
@@ -74,9 +74,9 @@ class Learner(object):
         if self.load_model:
             self._load_model()
 
-    def _episode_summery(self, index):
+    def _episode_summery(self, index, step_count):
         elapsed = time.time() - self.start_time
-        print("Episode %d - Score %.2f (%.2f seconds)" % (index, self.episodes_rewards_list[-1], elapsed))
+        print("Episode %d -\tScore %.2f\tSteps: %d\tTime: %.2f sec" % (index, self.episodes_rewards_list[-1], step_count, elapsed))
         self.start_time = time.time()
         if index % EPISODES_BETWEEN_SAVE == 0:
             try:
@@ -96,9 +96,9 @@ class Learner(object):
         # do stuff
         self.update_target() 
         for i in range(NUM_EPISODES):
-            self._run_episode()
+            step_count = self._run_episode()
             #Periodically save the model.
-            self._episode_summery(i)            
+            self._episode_summery(i, step_count)
         self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
 
     def _run_step(self, state, replay_buffer):
@@ -133,7 +133,7 @@ class Learner(object):
         #Reset environment and get first new observation
         state = self.walker.reset()
         episode_rewards = 0
-        for j in range(EPISODE_LENGTH):
+        for step_index in range(EPISODE_LENGTH):
             state, reward  = self._run_step(state, episode_buffer)
             self.total_steps += 1
             episode_rewards += reward
@@ -147,6 +147,7 @@ class Learner(object):
             self.explore_prob -= self.episode_drop
         self.training_buffer.add(episode_buffer.buffer)
         self.episodes_rewards_list.append(episode_rewards)
+        return step_index
 
     def show(self):
         state = self.walker.reset(True)
