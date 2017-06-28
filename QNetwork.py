@@ -45,7 +45,7 @@ class QNetwork(object):
         self.regularizers = sum([tf.nn.l2_loss(weight) for weight in self.weights])
         self.action_regularizer = tf.nn.l2_loss(self.action_input)
         self.loss = tf.reduce_mean(td_error + BETA_W * self.regularizers)
-        trainer = tf.train.AdamOptimizer(learning_rate=0.0001)
+        trainer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.update_model = trainer.minimize(self.loss)
 
     #get state, predict action by simple per-dimension ascent
@@ -64,7 +64,7 @@ class QNetwork(object):
             q_options = [self.get_q_action_modified(states, actions, index, new_val, sess) for new_val in action_values]
             q_options = np.concatenate(q_options, axis=1)
             actions[:, index] = action_values[np.argmax(q_options, axis=1)]
-            
+
         self.total_q += np.max(q_options, axis=1)[0]
         return actions
 

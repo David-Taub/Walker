@@ -6,7 +6,7 @@ from Shape import Shape
 class Walker(object):
     BUFFER_LENGTH = 0.6
     TIME_STEP = 0.1
-    PHYSICAL_STEPS_IN_STEP = 10
+    PHYSICAL_STEPS_IN_STEP = 15
     NUM_OF_BONES = 8
 
     def __init__(self, is_displaying):
