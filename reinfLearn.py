@@ -12,18 +12,19 @@ from ExperienceBuffer import ExperienceBuffer
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 batch_size          = 10 #How many experiences to use for each training step.
-UPDATE_FREQ         = 2 #How often to perform a training step.
 y                   = .99 #Discount factor on the target Q-values
 START_EXPLOIT_PROB  = 1 #Starting chance of random action
 END_EXPLOIT_PROB    = 0.2 #Final chance of random action
 NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
 ANNEALING_EPISODES  = 300 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
-EPISODE_LENGTH      = 110 #The max allowed length of our episode.
+MAX_PACES_IN_EPISODE= 10 #The max allowed paces in an episode
+STEPS_IN_PACE       = 15 #steps in a pace
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 tau                 = 0.001 #Rate to update target network toward primary network
 EPISODES_BETWEEN_SAVE = 100
-EPISODES_BETWEEN_BIG_SUMMERY = 10
+STEPS_BETWEEN_DQN_TRAIN = 2 #How often to  a traBETWEEN_perforg step.
+EPISODES_BETWEEN_BIG_SUMMERY = 15
 STOP_EPISODE_SCORE_THRESHOLD = -1
 
 class Learner(object):
@@ -58,9 +59,9 @@ class Learner(object):
         self.saver = tf.train.Saver()
         self.gen_target_ops()
         self.training_buffer = ExperienceBuffer()
-        #Set the rate of random action decrease. 
-        self.episode_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_EPISODES      #create 60 to contain total rewards and steps per episode
-        self.episodes_rewards_list = []
+        #Set the rate of random action decrease.
+        self.step_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_EPISODES
+        self.episodes_scores = []
         self.total_steps = 0
         self.sess = tf.Session()
 
@@ -74,9 +75,9 @@ class Learner(object):
         if self.load_model:
             self._load_model()
 
-    def _episode_summery(self, index, step_count):
+    def _episode_summery(self, index, pace_count):
         elapsed = time.time() - self.start_time
-        print("Episode %d -\tScore %.2f\tSteps: %d\tTime: %.2f sec" % (index, self.episodes_rewards_list[-1], step_count, elapsed))
+        print("Episode %d -\tScore %.2f\tSteps: %d\tTime: %.2f sec" % (index, self.episodes_scores[-1], pace_count * STEPS_IN_PACE, elapsed))
         self.start_time = time.time()
         if index % EPISODES_BETWEEN_SAVE == 0:
             try:
@@ -85,32 +86,48 @@ class Learner(object):
             except:
                 print("SAVING FAILED!")
         if index % EPISODES_BETWEEN_BIG_SUMMERY == 0:
-            print("Average total reward: %.2f" % np.mean(self.episodes_rewards_list[-10:]))
+            print("Average scores: %.2f" % np.mean(self.episodes_scores[-10:]))
             print("Total Q: %.2f" % self.mainQN.pop_total_q())
             print("Explore probability: %.2f" % self.explore_prob)
             print("L2 of weights: %.2f" % self.sess.run(self.mainQN.regularizers))
 
     def train(self):
         print("Start of training")
-        
+
         # do stuff
-        self.update_target() 
+        self.update_target()
         for i in range(NUM_EPISODES):
-            step_count = self._run_episode()
+            pace_count = self._run_episode()
             #Periodically save the model.
-            self._episode_summery(i, step_count)
+            self._episode_summery(i, pace_count)
         self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
 
-    def _run_step(self, state, replay_buffer):
+    def _run_pace(self, state, replay_buffer):
+        is_exploring = np.random.rand(1) < self.explore_prob or self.total_steps < PRE_TRAIN_STEPS
+        for step_index in range(STEPS_IN_PACE):
+            state = self._run_step(state, replay_buffer, is_exploring)
+            self._post_step_update()
+        return state
+
+    def _post_step_update(self):
+        self.total_steps += 1
+        if self.total_steps <= PRE_TRAIN_STEPS:
+            return
+        if self.total_steps % (STEPS_BETWEEN_DQN_TRAIN) == 0:
+            self._batch_train_QN()
+        if self.explore_prob > END_EXPLOIT_PROB:
+            self.explore_prob -= self.step_drop
+
+    def _run_step(self, state, replay_buffer, is_exploring):
         #Choose an action by greedily (with e chance of random action) from the Q-network
-        if np.random.rand(1) < self.explore_prob or self.total_steps < PRE_TRAIN_STEPS:
+        if is_exploring:
             action = np.random.randint(-1, 2, (self.mainQN.action_size))
         else:
             action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
         next_state, reward = self.walker.step(action)
 
         replay_buffer.add(np.reshape(np.array([state, action, reward, next_state]), [1, 4])) #Save the experience to our episode buffer.
-        return next_state, reward
+        return next_state
 
     def _batch_train_QN(self):
         train_batch = self.training_buffer.sample(batch_size) #Get a random batch of experiences.
@@ -132,26 +149,17 @@ class Learner(object):
         episode_buffer = ExperienceBuffer()
         #Reset environment and get first new observation
         state = self.walker.reset()
-        episode_rewards = 0
-        for step_index in range(EPISODE_LENGTH):
-            state, reward  = self._run_step(state, episode_buffer)
-            self.total_steps += 1
-            episode_rewards += reward
-            if self.total_steps <= PRE_TRAIN_STEPS:
-                continue
-            if self.total_steps % (UPDATE_FREQ) == 0:
-                self._batch_train_QN()
+        for pace_index in range(MAX_PACES_IN_EPISODE):
+            state = self._run_pace(state, episode_buffer)
             if self.walker.score() < STOP_EPISODE_SCORE_THRESHOLD:
                 break
-        if self.explore_prob > END_EXPLOIT_PROB:
-            self.explore_prob -= self.episode_drop
         self.training_buffer.add(episode_buffer.buffer)
-        self.episodes_rewards_list.append(episode_rewards)
-        return step_index
+        self.episodes_scores.append(self.walker.score())
+        return pace_index + 1
 
     def show(self):
         state = self.walker.reset(True)
-        for i in range(EPISODE_LENGTH*20):
+        for i in range(MAX_PACES_IN_EPISODE*20):
             action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
             state, _ = self.walker.step(action)
 
