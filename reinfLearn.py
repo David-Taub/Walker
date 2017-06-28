@@ -16,7 +16,7 @@ y                   = .99 #Discount factor on the target Q-values
 START_EXPLOIT_PROB  = 1 #Starting chance of random action
 END_EXPLOIT_PROB    = 0.2 #Final chance of random action
 NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
-ANNEALING_EPISODES  = 300 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
+ANNEALING_STEPS     = 15000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
 MAX_PACES_IN_EPISODE= 10 #The max allowed paces in an episode
 STEPS_IN_PACE       = 15 #steps in a pace
@@ -60,7 +60,7 @@ class Learner(object):
         self.gen_target_ops()
         self.training_buffer = ExperienceBuffer()
         #Set the rate of random action decrease.
-        self.step_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_EPISODES
+        self.step_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_STEPS
         self.episodes_scores = []
         self.total_steps = 0
         self.sess = tf.Session()
@@ -102,10 +102,17 @@ class Learner(object):
             self._episode_summery(i, pace_count)
         self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
 
+    # pace is a run of a few steps, without interrupting, either in explore mode or exploit mode
     def _run_pace(self, state, replay_buffer):
         is_exploring = np.random.rand(1) < self.explore_prob or self.total_steps < PRE_TRAIN_STEPS
+        explore_action = np.zeros([self.mainQN.action_size])
+        explore_mask = np.zeros([self.mainQN.action_size])
+        if is_exploring:
+            explore_action = np.random.randint(-1, 2, (self.mainQN.action_size))
+            explore_mask = np.random.randint(0, 2, (self.mainQN.action_size))
+
         for step_index in range(STEPS_IN_PACE):
-            state = self._run_step(state, replay_buffer, is_exploring)
+            state = self._run_step(state, replay_buffer, explore_action, explore_mask)
             self._post_step_update()
         return state
 
@@ -118,12 +125,10 @@ class Learner(object):
         if self.explore_prob > END_EXPLOIT_PROB:
             self.explore_prob -= self.step_drop
 
-    def _run_step(self, state, replay_buffer, is_exploring):
+    def _run_step(self, state, replay_buffer, explore_action, explore_mask):
         #Choose an action by greedily (with e chance of random action) from the Q-network
-        if is_exploring:
-            action = np.random.randint(-1, 2, (self.mainQN.action_size))
-        else:
-            action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
+        action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
+        action = explore_mask * explore_action + (-explore_mask+1) * action
         next_state, reward = self.walker.step(action)
 
         replay_buffer.add(np.reshape(np.array([state, action, reward, next_state]), [1, 4])) #Save the experience to our episode buffer.
@@ -159,7 +164,7 @@ class Learner(object):
 
     def show(self):
         state = self.walker.reset(True)
-        for i in range(MAX_PACES_IN_EPISODE*20):
+        for i in range(1000):
             action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
             state, _ = self.walker.step(action)
 
