@@ -8,20 +8,19 @@ from panda3d.bullet import *
 
 class MyApp(ShowBase):
   MASS = 1
-  MOTOR_POWER = 2000
-  def __init__(self, walker):
+  MOTOR_POWER = 1000
+  def __init__(self, walker, is_displaying):
     # World
-    self.is_displaying = False
+    self.is_displaying = is_displaying
     self.world = BulletWorld()
     self.world.setGravity(Vec3(0, 0, -9.81))
-    self.init_plane()
     self.walker = walker
-
-  def init_display(self):
     if self.is_displaying:
-      return
+      self._init_display()
+
+
+  def _init_display(self):
     print("Setting up display")
-    self.is_displaying = True
     ShowBase.__init__(self)
     self.add_light()
     taskMgr.add(self.spinCameraTask, "SpinCameraTask")
@@ -141,17 +140,9 @@ class MyApp(ShowBase):
       self.walker.joints[i].constraint.enableAngularMotor(True, action[i], self.MOTOR_POWER)
 
 
-  def get_action(self, state):
-    return
-
-  def get_score(self):
-    com = self.get_com()
-    com[2] = 0
-    return com.length()
-
   def get_com(self):
     positions = [bone.node.getTransform().getPos() for bone in self.walker.bones]
-    com = Vec3(0,0,0)
+    com = Vec3(0, 0, 0)
     for p in positions:
       com += p
     com /= len(self.walker.bones)
@@ -170,13 +161,20 @@ class MyApp(ShowBase):
       return Task.cont
 
   def remove_shape(self):
-    for joint in self.walker.joints:
-      self.world.removeConstraint(joint.constraint)
-    for bone in self.walker.bones:
-      self.world.removeRigidBody(bone.node)
-      if self.is_displaying:
-        bone.model.removeNode()
-        bone.np.removeNode()
+    # for bone in self.walker.bones:
+    #   if self.is_displaying:
+    #     bone.model.removeNode()
+    #     bone.np.removeNode()
+    
+    if self.is_displaying:
+      [np.removeNode() for np in render.getChildren() if np.getName().startswith("Bone")]
+        
+
+    for body in self.world.getRigidBodies():
+      self.world.removeRigidBody(body)
+    for constraint in self.world.getConstraints():
+      self.world.removeConstraint(constraint)
+
     if self.is_displaying:
       self.ground_np.removeNode()
       self.ground_node.removeAllChildren()

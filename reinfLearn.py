@@ -19,11 +19,13 @@ END_EXPLOIT_PROB    = 0.2 #Final chance of random action
 NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
 ANNEALING_EPISODES  = 300 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
-EPISODE_LENGTH      = 100 #The max allowed length of our episode.
+EPISODE_LENGTH      = 50 #The max allowed length of our episode.
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 tau                 = 0.001 #Rate to update target network toward primary network
 EPISODES_BETWEEN_SAVE = 100
 EPISODES_BETWEEN_BIG_SUMMERY = 10
+STOP_EPISODE_SCORE_THRESHOLD = -1
+
 class Learner(object):
     def gen_target_ops(self):
         trainable_variables = tf.trainable_variables()
@@ -45,21 +47,19 @@ class Learner(object):
         ckpt = tf.train.get_checkpoint_state(BASE_DIR)
         print('Loading %s' % ckpt.model_checkpoint_path)
         self.saver.restore(self.sess, ckpt.model_checkpoint_path)
-        print('Weight regularization: %.2f' % self.sess.run(self.mainQN.regularizers))
 
-    def __init__(self, show_while_training, no_exploit):
+    def __init__(self, is_displaying, no_explore):
         self.start_time = time.time()
-        self.show_while_training = show_while_training
         tf.reset_default_graph()
-        self.walker = Walker()
-        self.explore_prob = END_EXPLOIT_PROB if no_exploit else START_EXPLOIT_PROB
+        self.walker = Walker(is_displaying)
+        self.explore_prob = 0 if no_explore else START_EXPLOIT_PROB
         self.mainQN = QNetwork(self.walker.state_size(), self.walker.action_size())
         self.targetQN = QNetwork(self.walker.state_size(), self.walker.action_size())
         self.saver = tf.train.Saver()
         self.gen_target_ops()
         self.training_buffer = ExperienceBuffer()
         #Set the rate of random action decrease. 
-        self.step_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_EPISODES      #create 60 to contain total rewards and steps per episode
+        self.episode_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_EPISODES      #create 60 to contain total rewards and steps per episode
         self.episodes_rewards_list = []
         self.total_steps = 0
         self.sess = tf.Session()
@@ -79,8 +79,11 @@ class Learner(object):
         print("Episode %d - Score %.2f (%.2f seconds)" % (index, self.episodes_rewards_list[-1], elapsed))
         self.start_time = time.time()
         if index % EPISODES_BETWEEN_SAVE == 0:
-            self.saver.save(self.sess, BASE_DIR+'/model-'+str(index)+'.cptk')
-            print("Saved model")
+            try:
+                self.saver.save(self.sess, BASE_DIR+'/model-'+str(index)+'.cptk')
+                print("Saved model")
+            except:
+                print("SAVING FAILED!")
         if index % EPISODES_BETWEEN_BIG_SUMMERY == 0:
             print("Average total reward: %.2f" % np.mean(self.episodes_rewards_list[-10:]))
             print("Total Q: %.2f" % self.mainQN.pop_total_q())
@@ -128,7 +131,7 @@ class Learner(object):
     def _run_episode(self):
         episode_buffer = ExperienceBuffer()
         #Reset environment and get first new observation
-        state = self.walker.reset(self.show_while_training)
+        state = self.walker.reset()
         episode_rewards = 0
         for j in range(EPISODE_LENGTH):
             state, reward  = self._run_step(state, episode_buffer)
@@ -138,8 +141,10 @@ class Learner(object):
                 continue
             if self.total_steps % (UPDATE_FREQ) == 0:
                 self._batch_train_QN()
+            if self.walker.score() < STOP_EPISODE_SCORE_THRESHOLD:
+                break
         if self.explore_prob > END_EXPLOIT_PROB:
-            self.explore_prob -= self.step_drop
+            self.explore_prob -= self.episode_drop
         self.training_buffer.add(episode_buffer.buffer)
         self.episodes_rewards_list.append(episode_rewards)
 
@@ -150,7 +155,9 @@ class Learner(object):
             state, _ = self.walker.step(action)
 
 def main():
-    l = Learner(len(sys.argv) > 1, len(sys.argv) > 2)
+    is_displaying = len(sys.argv) > 1
+    no_explore = len(sys.argv) > 2
+    l = Learner(is_displaying, no_explore)
     if len(sys.argv) == 4:
         l.show()
     else:

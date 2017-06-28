@@ -12,4 +12,4 @@ class ExperienceBuffer(object):
         self.buffer.extend(experience)
 
     def sample(self, size):
-        return np.reshape(np.array(random.sample(self.buffer, size)), [size,4])
+        return np.reshape(np.array(random.sample(self.buffer, size)), [size, 4])
