@@ -3,6 +3,7 @@ import random, math, sys, pickle, os
 import numpy as np
 import MyApp
 from Shape import Shape
+
 class Walker(object):
     BUFFER_LENGTH = 0.6
     TIME_STEP = 0.1
@@ -34,6 +35,7 @@ class Walker(object):
         else:
             self.shape = Shape(self.NUM_OF_BONES)
             self._build_bones_and_joints()
+            print("Positioning shape in start posture")
             for i in range(300):
                 self.step([0] * len(self.joints))
             self.shape.start_score = self.score()
@@ -51,13 +53,11 @@ class Walker(object):
                 self.joints.append(joint)
 
 
-    def state_size(self):
-        return len(self.get_state())
-
     def action_size(self):
         return len(self.joints)
 
     def save_shape(self):
+        print("Saving shape to %s" % self._get_pickle_path())
         self.shape.positions = self.app.get_bones_positions()
         try:
             with open(self._get_pickle_path(), 'wb') as f:
@@ -72,19 +72,27 @@ class Walker(object):
         self.app.debug_screen_print(action, state, reward, score)
         return state, reward
 
-    def get_state(self):
-        state = []
-        state += self.app.get_joint_angles()
-        state += self.app.get_bones_z()
-        state += self.app.head_hpr()
-        return np.array(state)
+    def get_state_sizes(self):
+        return self.get_state(True)
 
-    def gen_actions(self):
-        if self.physical_steps_done_in_step % self.PHYSICAL_STEPS_IN_STEP == 0:
-            self.physical_steps_done_in_step = 0
-            self.action_in_step = self.action_generator(self.get_state())
-        self.physical_steps_done_in_step += 1
-        return self.action_in_step
+    def get_state(self, return_sizes = False):
+        state = np.array([])
+        if return_sizes:
+            sizes = []
+        joints_angles = np.array(self.app.get_joint_angles())
+        bones_z = np.array(self.app.get_bones_z())
+        bones_contacts = self.app.get_contacts()
+
+        for part in self.shape.parts:
+            state_part = np.array(self.app.get_bones_positions())[part, 0] - self.app.get_com()
+            state_part = np.append(state_part, bones_contacts[part])
+            state_part = np.append(state_part, joints_angles[part[1:]-1] / 180)
+            if return_sizes:
+                sizes.append(state_part.shape[0])
+            state = np.append(state, state_part)
+        if return_sizes:
+            return sizes
+        return np.array(state)
 
     def score(self):
         return self.app.get_com()[1] - self.shape.start_score

@@ -163,10 +163,6 @@ class MyApp(ShowBase):
             return Task.cont
 
     def remove_shape(self):
-        # for bone in self.walker.bones:
-        #     if self.is_displaying:
-        #         bone.model.removeNode()
-        #         bone.np.removeNode()
 
         if self.is_displaying:
             [np.removeNode() for np in render.getChildren() if np.getName().startswith("Bone")]
@@ -191,7 +187,6 @@ class MyApp(ShowBase):
 
 
     def physical_step(self, action, dt):
-        print(self.get_contacts())
         self.apply_action(action)
         self.world.doPhysics(dt)
         if self.is_displaying:

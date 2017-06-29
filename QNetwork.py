@@ -4,36 +4,30 @@ import numpy as np
 import random, math, itertools
 
 class QNetwork(object):
-    def gen_layer(self, input_layer, in_size, out_size, use_relu = True):
-        self.weights.append(tf.Variable(
-            tf.truncated_normal([in_size, out_size],
-                                stddev=1.0 / math.sqrt(float(in_size))),
-            name='weights'))
-        biases = tf.Variable(tf.zeros([out_size]),
-                             name='biases')
-        out = tf.matmul(input_layer, self.weights[-1]) + biases
-        if use_relu:
-            out = tf.nn.relu(out)
-        return out
 
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_sizes, action_size):
         self.total_q = 0
-        LS1 = 40
-        LS2 = 30
+        STATE_LAYER_1_FACTOR = 2
+        STATE_LAYER_2_FACTOR = 2
+        LEARNING_RATE = 0.01
         LA1 = 20
-        MIX1 = 20
-        BETA_W = 0.1
+        LA2 = 20
+        MIX1 = 25
+        BETA_W = 10 ** -5
         self.weights = []
         self.action_size = action_size
-        self.state_size = state_size
-        self.state_input = tf.placeholder(shape=[None, state_size],dtype=tf.float32)
-        self.action_input = tf.placeholder(shape=[None, action_size],dtype=tf.float32)
+        self.state_sizes = state_sizes
+        self.state_inputs = [tf.placeholder(shape=[None, part_size],dtype=tf.float32) for part_size in state_sizes]
 
-        state_hidden1 = self.gen_layer(self.state_input, state_size, LS1)
-        state_hidden2 = self.gen_layer(state_hidden1, LS1, LS2)
+        self.action_input = tf.placeholder(shape=[None, action_size],dtype=tf.float32)
+        state_layer1_sizes = [part_size * STATE_LAYER_1_FACTOR for part_size in state_sizes]
+        state_layer2_sizes = [part_size * STATE_LAYER_2_FACTOR for part_size in state_sizes]
+        state_hiddens1 = [self.gen_layer(self.state_inputs[i], state_sizes[i], state_layer1_sizes[i]) for i in range(len(state_sizes))]
+        state_hiddens2 = [self.gen_layer(state_hiddens1[i], state_layer1_sizes[i], state_layer2_sizes[i]) for i in range(len(state_sizes))]
         action_hidden1 = self.gen_layer(self.action_input, action_size, LA1)
-        merged = tf.concat([state_hidden2, action_hidden1], axis=1)
-        mixed = self.gen_layer(merged, LA1 + LS2, MIX1, False)
+        action_hidden2 = self.gen_layer(action_hidden1, LA1, LA2)
+        merged = tf.concat(state_hiddens2 + [action_hidden2], axis=1)
+        mixed = self.gen_layer(merged, LA2 + sum(state_layer2_sizes), MIX1)
         self.Q_est = self.gen_layer(mixed, MIX1, 1, False)
 
         #Then combine them together to get our final Q-values.
@@ -45,8 +39,17 @@ class QNetwork(object):
         self.regularizers = sum([tf.nn.l2_loss(weight) for weight in self.weights])
         self.action_regularizer = tf.nn.l2_loss(self.action_input)
         self.loss = tf.reduce_mean(td_error + BETA_W * self.regularizers)
-        trainer = tf.train.AdamOptimizer(learning_rate=0.001)
+        trainer = tf.train.AdamOptimizer(learning_rate = LEARNING_RATE)
         self.update_model = trainer.minimize(self.loss)
+
+    def gen_layer(self, input_layer, in_size, out_size, use_relu = True):
+        xavier_init = tf.contrib.layers.xavier_initializer()
+        self.weights.append(tf.Variable(xavier_init([in_size,out_size]), name='weights'))
+        biases = tf.Variable(xavier_init([out_size]), name='biases')
+        out = tf.matmul(input_layer, self.weights[-1]) + biases
+        if use_relu:
+            out = tf.nn.relu(out)
+        return out
 
     #get state, predict action by simple per-dimension ascent
     # states - batch_size x state_size
@@ -72,10 +75,19 @@ class QNetwork(object):
         ret = self.total_q
         self.total_q = 0
         return ret
+
     def get_q_action_modified(self, states, actions, index, new_val, sess):
         modified_actions = np.copy(actions)
         modified_actions[:, index] = new_val
         return self.calc_q(states, modified_actions, sess)
 
     def calc_q(self, states, actions, sess):
-        return sess.run(self.Q_est, feed_dict={self.state_input:states, self.action_input:actions})
+        # import pdb;pdb.set_trace()
+        feed_dict = self.states_to_feed_dict(states)
+        feed_dict[self.action_input] = actions
+        return sess.run(self.Q_est, feed_dict=feed_dict)
+
+    def states_to_feed_dict(self, states):
+        split_states = np.split(states, np.cumsum(self.state_sizes), 1)[:-1]
+        feed_dict = dict(zip(self.state_inputs, split_states))
+        return feed_dict

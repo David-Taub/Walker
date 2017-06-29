@@ -11,18 +11,18 @@ from ExperienceBuffer import ExperienceBuffer
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-batch_size          = 10 #How many experiences to use for each training step.
-y                   = .99 #Discount factor on the target Q-values
+BATCH_SIZE          = 10 #How many experiences to use for each training step.
+DISCOUNT            = .99 #Discount factor on the target Q-values
 START_EXPLOIT_PROB  = 1 #Starting chance of random action
 END_EXPLOIT_PROB    = 0.2 #Final chance of random action
-NUM_EPISODES        = 20000 #How many episodes of game environment to train network with.
+NUM_EPISODES        = 200000 #How many episodes of game environment to train network with.
 ANNEALING_STEPS     = 15000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
 MAX_PACES_IN_EPISODE= 10 #The max allowed paces in an episode
 STEPS_IN_PACE       = 15 #steps in a pace
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
-tau                 = 0.001 #Rate to update target network toward primary network
-EPISODES_BETWEEN_SAVE = 100
+TAU                 = 0.001 #Rate to update target network toward primary network
+EPISODES_BETWEEN_SAVE = 10000
 STEPS_BETWEEN_DQN_TRAIN = 2 #How often to  a traBETWEEN_perforg step.
 EPISODES_BETWEEN_BIG_SUMMERY = 15
 STOP_EPISODE_SCORE_THRESHOLD = -1
@@ -34,7 +34,7 @@ class Learner(object):
         self.target_ops = []
         for idx, var in enumerate(trainable_variables[0:total_vars // 2]):
             # convex combination of new and old values
-            new_val = (var.value() * tau) + ((1 - tau) * trainable_variables[idx + total_vars // 2].value())
+            new_val = (var.value() * TAU) + ((1 - TAU) * trainable_variables[idx + total_vars // 2].value())
             self.target_ops.append(trainable_variables[idx+total_vars//2].assign(new_val))
 
 
@@ -54,8 +54,8 @@ class Learner(object):
         tf.reset_default_graph()
         self.walker = Walker(is_displaying)
         self.explore_prob = 0 if no_explore else START_EXPLOIT_PROB
-        self.mainQN = QNetwork(self.walker.state_size(), self.walker.action_size())
-        self.targetQN = QNetwork(self.walker.state_size(), self.walker.action_size())
+        self.mainQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
+        self.targetQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
         self.saver = tf.train.Saver()
         self.gen_target_ops()
         self.training_buffer = ExperienceBuffer()
@@ -85,12 +85,13 @@ class Learner(object):
                 print("Saved model")
             except:
                 print("SAVING FAILED!")
+        avg_score = np.mean(self.episodes_scores[-10:])
         if index % EPISODES_BETWEEN_BIG_SUMMERY == 0:
-            print("Average scores: %.2f" % np.mean(self.episodes_scores[-10:]))
+            print("Average scores: %.2f" % avg_score)
             print("Total Q: %.2f" % self.mainQN.pop_total_q())
             print("Explore probability: %.2f" % self.explore_prob)
             print("L2 of weights: %.2f" % self.sess.run(self.mainQN.regularizers))
-
+        self.explore_prob = 0.1 + 0.1 * (10 - max(min(avg_score, 10), 2))
     def train(self):
         print("Start of training")
 
@@ -122,12 +123,13 @@ class Learner(object):
             return
         if self.total_steps % (STEPS_BETWEEN_DQN_TRAIN) == 0:
             self._batch_train_QN()
-        if self.explore_prob > END_EXPLOIT_PROB:
-            self.explore_prob -= self.step_drop
+        # if self.explore_prob > END_EXPLOIT_PROB:
+        #     self.explore_prob -= self.step_drop
 
     def _run_step(self, state, replay_buffer, explore_action, explore_mask):
         #Choose an action by greedily (with e chance of random action) from the Q-network
-        action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
+        # import pdb; pdb.set_trace()
+        action = self.mainQN.predict(np.reshape(state, [1,-1]), self.sess)[0]
         action = explore_mask * explore_action + (-explore_mask+1) * action
         next_state, reward = self.walker.step(action)
 
@@ -135,19 +137,21 @@ class Learner(object):
         return next_state
 
     def _batch_train_QN(self):
-        train_batch = self.training_buffer.sample(batch_size) #Get a random batch of experiences.
+        train_batch = self.training_buffer.sample(BATCH_SIZE) #Get a random batch of experiences.
         #Below we perform the Double-DQN update to the target Q-values
         actions = self.mainQN.predict(np.vstack(train_batch[:, 3]), self.sess)
 
-        doubleQ = self.sess.run(self.targetQN.Q_est, feed_dict={self.targetQN.state_input: np.vstack(train_batch[:, 3]),
-                                                                self.targetQN.action_input: actions})[:,0]
-        targetQ = train_batch[:, 2] + (y * doubleQ)
+        feed_dict = self.targetQN.states_to_feed_dict(np.vstack(train_batch[:, 3]))
+        feed_dict[self.targetQN.action_input] = actions
+        doubleQ = self.sess.run(self.targetQN.Q_est, feed_dict=feed_dict)[:,0]
+        targetQ = train_batch[:, 2] + (DISCOUNT * doubleQ)
         # import pdb; pdb.set_trace()
         #Update the network with our target values.
-        self.sess.run(self.mainQN.update_model, \
-            feed_dict={self.mainQN.state_input: np.vstack(train_batch[:,0]),
-                       self.mainQN.action_input: np.vstack(train_batch[:,1]),
-                       self.mainQN.targetQ: targetQ})
+        feed_dict = self.mainQN.states_to_feed_dict(np.vstack(train_batch[:,0]))
+        feed_dict[self.mainQN.action_input] = np.vstack(train_batch[:,1])
+        feed_dict[self.mainQN.targetQ] = targetQ
+
+        self.sess.run(self.mainQN.update_model, feed_dict = feed_dict)
         self.update_target() #Set the target network to be equal to the primary network.
 
     def _run_episode(self):
