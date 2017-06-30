@@ -78,6 +78,7 @@ class MyApp(ShowBase):
             self.ground_node = cm.generate()
             self.ground_np = render.attachNewNode(self.ground_node)
             self.ground_np.lookAt(0, 0, -1)
+            self.ground_np.setPos(Vec3(0,0,1))
             self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
 
 
