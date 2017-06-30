@@ -1,20 +1,20 @@
 import random, math, sys, pickle, os
 import numpy as np
 
+INIT_Z = 2
+MAX_IN_PART = 4
+NUM_OF_BONES = 4
 class Shape(object):
-    INIT_Z = 2
-    MAX_IN_PART = 3
-    def __init__(self, N):
+    def __init__(self):
         print("Generating random shape")
         self.start_score = 0
-        self.N = N
-        self.lengths = [random.uniform(1, 4) for i in range(N)]
-        self.widths = [random.uniform(0.2, 0.4) for i in range(N)]
-        self.heights = [random.uniform(0.2, 0.4) for i in range(N)]
-        self.headings = [random.randrange(-180, 180) for i in range(N)]
-        self.pitches = [random.randrange(-90, 90) for i in range(N)]
+        self.N = NUM_OF_BONES
+        self.lengths = [random.uniform(1, 4) for i in range(self.N)]
+        self.widths = [random.uniform(0.2, 0.4) for i in range(self.N)]
+        self.heights = [random.uniform(0.2, 0.4) for i in range(self.N)]
+        self.pitches = [random.randrange(-90, 90) for i in range(self.N)]
         self._gen_connections()
-        self.positions = [(0, i, self.INIT_Z) for i in range(N)]
+        self.positions = [(0, i, INIT_Z) for i in range(self.N)]
 
     def _gen_connections(self):
         self.connections = [-1]
@@ -36,7 +36,7 @@ class Shape(object):
             pointers.append(len(self.parts) - 1)
             return
         self.parts[pointers[parent]] = np.append(self.parts[pointers[parent]] , child)
-        if len(self.parts[pointers[parent]]) >= self.MAX_IN_PART:
+        if len(self.parts[pointers[parent]]) >= MAX_IN_PART:
             pointers.append(None)
         else:
             pointers.append(pointers[parent])

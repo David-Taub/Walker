@@ -8,7 +8,6 @@ class Walker(object):
     BUFFER_LENGTH = 0.6
     TIME_STEP = 0.1
     PHYSICAL_STEPS_IN_STEP = 15
-    NUM_OF_BONES = 8
 
     def __init__(self, is_displaying):
         self.last_score = None
@@ -33,7 +32,7 @@ class Walker(object):
                 self.shape = pickle.load(f)
             self._build_bones_and_joints()
         else:
-            self.shape = Shape(self.NUM_OF_BONES)
+            self.shape = Shape()
             self._build_bones_and_joints()
             print("Positioning shape in start posture")
             for i in range(300):
@@ -49,7 +48,7 @@ class Walker(object):
             bone = Bone(self.app, self.shape.lengths[i], self.shape.positions[i], self.shape.widths[i], self.shape.heights[i], i)
             self.bones.append(bone)
             if self.shape.connections[i] != -1:
-                joint = Joint(self.bones[self.shape.connections[i]], bone, self.app, self.shape.headings[i], self.shape.pitches[i])
+                joint = Joint(self.bones[self.shape.connections[i]], bone, self.app, self.shape.pitches[i])
                 self.joints.append(joint)
 
 
@@ -90,6 +89,7 @@ class Walker(object):
             if return_sizes:
                 sizes.append(state_part.shape[0])
             state = np.append(state, state_part)
+
         if return_sizes:
             return sizes
         return np.array(state)
@@ -105,8 +105,7 @@ class Walker(object):
         return ret
 
 class Joint(object):
-    def __init__(self, parent_bone, child_bone, app, heading, pitch):
-        hpr = [heading, pitch, 0]
+    def __init__(self, parent_bone, child_bone, app, pitch):
         hpr = [0, pitch, 0]
         pos = 1
         self.constraint = app.add_joint(parent_bone, child_bone, hpr, pos)
