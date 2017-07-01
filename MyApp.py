@@ -7,8 +7,7 @@ from panda3d.bullet import *
 import numpy as np
 
 class MyApp(ShowBase):
-    MASS = 1
-    MOTOR_POWER = 1000
+    MOTOR_POWER = 10
     def __init__(self, walker, is_displaying):
         # World
         self.is_displaying = is_displaying
@@ -83,17 +82,18 @@ class MyApp(ShowBase):
 
 
     def get_bones_positions(self):
-        return [[bone.node.getTransform().getPos(), bone.node.getTransform().getHpr()] for bone in self.walker.bones]
+        return [[list(bone.node.getTransform().getPos()), list(bone.node.getTransform().getHpr())] for bone in self.walker.bones]
 
     def init_bone(self, bone, position, index):
         # Box
         shape = BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
         ts = TransformState.makePos(Point3(bone.length, bone.height, bone.width))
         bone.node = BulletRigidBodyNode('Bone%d' % index)
-        bone.node.setMass(self.MASS)
-        bone.node.setFriction(1)
+        bone.node.setMass(bone.mass)
+        bone.node.setFriction(bone.friction)
         bone.node.addShape(shape, ts)
-        bone.node.setTransform(TransformState.makePosHpr(position[0], position[1]))
+        # import pdb; pdb.set_trace()
+        bone.node.setTransform(TransformState.makePosHpr(Vec3(*position[0]), Vec3(*position[1])))
         self.world.attachRigidBody(bone.node)
 
         if self.is_displaying:
@@ -128,7 +128,7 @@ class MyApp(ShowBase):
         child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(*hpr))
         constraint = BulletHingeConstraint(parent_bone.node, child_bone.node, parent_frame, child_frame)
         constraint.setLimit(-120, 120)
-        constraint.enableFeedback(True)
+        constraint.enableFeedback(False)
         self.world.attachConstraint(constraint)
         return constraint
 
@@ -140,7 +140,7 @@ class MyApp(ShowBase):
 
     def apply_action(self, action):
         for i in range(len(self.walker.joints)):
-            self.walker.joints[i].constraint.enableAngularMotor(True, action[i], self.MOTOR_POWER)
+            self.walker.joints[i].constraint.enableAngularMotor(True, action[i] + 0.0001, self.MOTOR_POWER)
 
 
     def get_com(self):
@@ -189,9 +189,8 @@ class MyApp(ShowBase):
 
     def physical_step(self, action, dt):
         self.apply_action(action)
-        self.world.doPhysics(dt)
+        self.world.doPhysics(dt, 3)
         if self.is_displaying:
-            # render frame
             taskMgr.step()
 
     def head_hpr(self):

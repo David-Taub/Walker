@@ -11,8 +11,8 @@ class QNetwork(object):
         STATE_LAYER_2_FACTOR = 2
         LEARNING_RATE = 0.01
         LA1 = 20
-        LA2 = 20
-        MIX1 = 25
+        LA2 = 10
+        MIX1 = 15
         BETA_W = 10 ** -5
         self.weights = []
         self.action_size = action_size
@@ -68,7 +68,8 @@ class QNetwork(object):
             q_options = np.concatenate(q_options, axis=1)
             actions[:, index] = action_values[np.argmax(q_options, axis=1)]
 
-        self.total_q += np.max(q_options, axis=1)[0]
+        if batch_size == 1:
+            self.total_q += np.max(q_options, axis=1)[0]
         return actions
 
     def pop_total_q(self):

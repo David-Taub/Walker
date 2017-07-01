@@ -19,13 +19,14 @@ NUM_EPISODES        = 200000 #How many episodes of game environment to train net
 ANNEALING_STEPS     = 15000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
 PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
 MAX_PACES_IN_EPISODE= 10 #The max allowed paces in an episode
-STEPS_IN_PACE       = 15 #steps in a pace
+STEPS_IN_PACE       = 6 #steps in a pace
 BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
 TAU                 = 0.001 #Rate to update target network toward primary network
 EPISODES_BETWEEN_SAVE = 10000
 STEPS_BETWEEN_DQN_TRAIN = 2 #How often to  a traBETWEEN_perforg step.
 EPISODES_BETWEEN_BIG_SUMMERY = 15
-STOP_EPISODE_SCORE_THRESHOLD = -1
+STOP_EPISODE_SCORE_THRESHOLD = -3
+STOP_EPISODE_STATE_THRESHOLD = 0.0001
 
 class Learner(object):
     def gen_target_ops(self):
@@ -44,15 +45,19 @@ class Learner(object):
             self.sess.run(op)
 
     def _load_model(self):
-        print('Loading Model...')
-        ckpt = tf.train.get_checkpoint_state(BASE_DIR)
-        print('Loading %s' % ckpt.model_checkpoint_path)
-        self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+        try:
+            print('Loading Model...')
+            ckpt = tf.train.get_checkpoint_state(BASE_DIR)
+            print('Loading %s' % ckpt.model_checkpoint_path)
+            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+        except:
+            print("LOADING FAILED")
 
-    def __init__(self, is_displaying, no_explore):
+    def __init__(self, is_displaying, no_explore, use_keyboard):
         self.start_time = time.time()
         tf.reset_default_graph()
         self.walker = Walker(is_displaying)
+        self.no_explore = no_explore
         self.explore_prob = 0 if no_explore else START_EXPLOIT_PROB
         self.mainQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
         self.targetQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
@@ -91,7 +96,12 @@ class Learner(object):
             print("Total Q: %.2f" % self.mainQN.pop_total_q())
             print("Explore probability: %.2f" % self.explore_prob)
             print("L2 of weights: %.2f" % self.sess.run(self.mainQN.regularizers))
-        self.explore_prob = 0.1 + 0.1 * (10 - max(min(avg_score, 10), 2))
+        max_good_threshold = 10
+        min_good_threshold = 0
+        trimmed_score = max(min(avg_score, max_good_threshold), min_good_threshold)
+        trimmed_score = trimmed_score / (max_good_threshold - min_good_threshold)
+        self.explore_prob = 0 if self.no_explore else 0.1 + 0.8 * (1 - trimmed_score)
+
     def train(self):
         print("Start of training")
 
@@ -113,8 +123,12 @@ class Learner(object):
             explore_mask = np.random.randint(0, 2, (self.mainQN.action_size))
 
         for step_index in range(STEPS_IN_PACE):
-            state = self._run_step(state, replay_buffer, explore_action, explore_mask)
+            new_state = self._run_step(state, replay_buffer, explore_action, explore_mask)
             self._post_step_update()
+            if self.walker.score() < STOP_EPISODE_SCORE_THRESHOLD or \
+               np.linalg.norm(new_state - state) < STOP_EPISODE_STATE_THRESHOLD:
+                return None
+            state = new_state
         return state
 
     def _post_step_update(self):
@@ -160,26 +174,43 @@ class Learner(object):
         state = self.walker.reset()
         for pace_index in range(MAX_PACES_IN_EPISODE):
             state = self._run_pace(state, episode_buffer)
-            if self.walker.score() < STOP_EPISODE_SCORE_THRESHOLD:
+            if state is None:
                 break
         self.training_buffer.add(episode_buffer.buffer)
         self.episodes_scores.append(self.walker.score())
         return pace_index + 1
 
     def show(self):
-        state = self.walker.reset(True)
-        for i in range(1000):
-            action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
-            state, _ = self.walker.step(action)
+        state = self.walker.reset()
+
+        from panda3d.core import KeyboardButton
+        is_down = base.mouseWatcherNode.is_button_down
+        ups = [KeyboardButton.ascii_key(char) for char in (b'q',b'w',b'e')]
+        downs = [KeyboardButton.ascii_key(char) for char in (b'a',b's',b'd')]
+        # import pdb; pdb.set_trace()
+        while True:
+            # action = self.mainQN.predict(np.vstack(state).transpose(), self.sess)[0]
+            action = np.zeros(len(self.walker.joints))
+            action[[is_down(button) for button in ups]] = 1.0
+            action[[is_down(button) for button in downs]] = -1.0
+            state, _ = self.walker.step(action.tolist())
+            print(state)
+            if is_down(KeyboardButton.ascii_key(b'r')):
+                state = self.walker.reset()
+
 
 def main():
-    is_displaying = len(sys.argv) > 1
-    no_explore = len(sys.argv) > 2
-    l = Learner(is_displaying, no_explore)
-    if len(sys.argv) == 4:
+    is_displaying = False
+    no_explore = False
+    use_keyboard = False
+    if len(sys.argv) > 1:
+        is_displaying, no_explore, use_keyboard = \
+        {"show": (True, False, False),
+         "expl": (True, True, False),
+         "kbrd": (True, False, True)}[sys.argv[1]]
+    l = Learner(is_displaying, no_explore, use_keyboard)
+    if use_keyboard:
         l.show()
-    else:
-        l.train()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 import random, math, sys, pickle, os
 import numpy as np
 import MyApp
-from Shape import Shape
+from Shape import Shape, WormShape
 
 class Walker(object):
     BUFFER_LENGTH = 0.6
@@ -32,10 +32,11 @@ class Walker(object):
                 self.shape = pickle.load(f)
             self._build_bones_and_joints()
         else:
-            self.shape = Shape()
+            # self.shape = Shape()
+            self.shape = WormShape()
             self._build_bones_and_joints()
             print("Positioning shape in start posture")
-            for i in range(300):
+            for i in range(30):
                 self.step([0] * len(self.joints))
             self.shape.start_score = self.score()
             self.save_shape()
@@ -45,7 +46,7 @@ class Walker(object):
         self.joints = []
         self.bones = []
         for i in range(self.shape.N):
-            bone = Bone(self.app, self.shape.lengths[i], self.shape.positions[i], self.shape.widths[i], self.shape.heights[i], i)
+            bone = Bone(self.app, self.shape, i)
             self.bones.append(bone)
             if self.shape.connections[i] != -1:
                 joint = Joint(self.bones[self.shape.connections[i]], bone, self.app, self.shape.pitches[i])
@@ -65,8 +66,7 @@ class Walker(object):
             print("DUMP FAILED! %s" % self._get_pickle_path())
 
     def step(self, action):
-        for i in range(self.PHYSICAL_STEPS_IN_STEP):
-            self.app.physical_step(action, self.TIME_STEP)
+        self.app.physical_step(action, self.TIME_STEP)
         state, reward, score = self.get_state(), self.get_reward(), self.score()
         self.app.debug_screen_print(action, state, reward, score)
         return state, reward
@@ -114,10 +114,12 @@ class Joint(object):
 
 
 class Bone(object):
-    def __init__(self, app, length, position, width, height, index):
+    def __init__(self, app, shape, index):
         self.has_joint_ball = False
-        self.width = width
-        self.height = height
-        self.length = length
-        app.init_bone(self, position, index)
+        self.width = shape.widths[index]
+        self.mass = shape.masses[index]
+        self.friction = shape.frictions[index]
+        self.height = shape.heights[index]
+        self.length = shape.lengths[index]
+        app.init_bone(self, shape.positions[index], index)
 
