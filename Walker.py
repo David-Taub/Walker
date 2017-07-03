@@ -1,7 +1,7 @@
 
 import random, math, sys, pickle, os
 import numpy as np
-import MyApp
+from Panda3dApp import Panda3dApp
 from Shape import Shape, WormShape
 
 class Walker(object):
@@ -10,65 +10,60 @@ class Walker(object):
     PHYSICAL_STEPS_IN_STEP = 15
 
     def __init__(self, is_displaying):
-        self.last_score = None
-        self.app = MyApp.MyApp(self, is_displaying)
-        self.load_world()
+        self.last_score = 0
+        self.app = Panda3dApp(self, is_displaying)
+        self._init_shape()
 
 
     def _get_pickle_path(self):
         return os.path.join(os.path.dirname(sys.argv[0]), 'shape.pickle')
 
     def reset(self):
-        self.app.remove_shape()
-        self.last_score = None
-        self.load_world()
+        self.last_score = 0
+        self.app.restart_bones_position()
         return self.get_state()
 
-    def load_world(self):
-        self.app.init_plane()
+    def _init_shape(self):
         pickle_path = self._get_pickle_path()
         if os.path.isfile(pickle_path):
             with open(self._get_pickle_path(), 'rb') as f:
                 self.shape = pickle.load(f)
-            self._build_bones_and_joints()
-        else:
-            # self.shape = Shape()
-            self.shape = WormShape()
-            self._build_bones_and_joints()
-            print("Positioning shape in start posture")
-            for i in range(30):
-                self.step([0] * len(self.joints))
-            self.shape.start_score = self.score()
-            self.save_shape()
+            self.app.load_shape(self.shape)
+            return
+        print("Generating shape")
+        self.shape = Shape()
+        # self.shape = WormShape()
+        self.app.load_shape(self.shape)
+        print("Positioning shape in start posture")
+        com = self.app.get_com()
+        while True:
+            self.step([0] * len(self.shape.joints), False)
+            new_com = self.app.get_com()
+            if (com - new_com).length() == 0:
+                break
+            com = new_com
 
-
-    def _build_bones_and_joints(self):
-        self.joints = []
-        self.bones = []
-        for i in range(self.shape.N):
-            bone = Bone(self.app, self.shape, i)
-            self.bones.append(bone)
-            if self.shape.connections[i] != -1:
-                joint = Joint(self.bones[self.shape.connections[i]], bone, self.app, self.shape.pitches[i])
-                self.joints.append(joint)
-
+        self.app.save_shape_posture()
+        self.save_shape()
+        self.app.restart_bones_position()
 
     def action_size(self):
-        return len(self.joints)
+        return len(self.shape.joints)
 
     def save_shape(self):
         print("Saving shape to %s" % self._get_pickle_path())
-        self.shape.positions = self.app.get_bones_positions()
         try:
             with open(self._get_pickle_path(), 'wb') as f:
-                return pickle.dump(self.shape, f)
+                pickle.dump(self.shape, f)
+                return
         except IOError:
             print("DUMP FAILED! %s" % self._get_pickle_path())
 
-    def step(self, action):
+    def step(self, action, add_debug = True):
         self.app.physical_step(action, self.TIME_STEP)
-        state, reward, score = self.get_state(), self.get_reward(), self.score()
-        self.app.debug_screen_print(action, state, reward, score)
+        state, reward = self.get_state(), self.get_reward()
+        if add_debug:
+            self.app.debug_screen_print(action, state, reward, self.score())
         return state, reward
 
     def get_state_sizes(self):
@@ -95,31 +90,13 @@ class Walker(object):
         return np.array(state)
 
     def score(self):
-        return self.app.get_com()[1] - self.shape.start_score
+        return self.app.get_com().length()
         # return self.app.get_com()[2] + self.app.get_com()[1]
 
     def get_reward(self):
         new_score = self.score()
-        ret = new_score - self.last_score if self.last_score is not None else 0
+        ret = new_score - self.last_score
         self.last_score = new_score
         return ret
 
-class Joint(object):
-    def __init__(self, parent_bone, child_bone, app, pitch):
-        hpr = [0, pitch, 0]
-        pos = 1
-        self.constraint = app.add_joint(parent_bone, child_bone, hpr, pos)
-        self.parent_bone = parent_bone
-        self.child_bone = child_bone
-
-
-class Bone(object):
-    def __init__(self, app, shape, index):
-        self.has_joint_ball = False
-        self.width = shape.widths[index]
-        self.mass = shape.masses[index]
-        self.friction = shape.frictions[index]
-        self.height = shape.heights[index]
-        self.length = shape.lengths[index]
-        app.init_bone(self, shape.positions[index], index)
 

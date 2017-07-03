@@ -6,8 +6,8 @@ from panda3d.core import *
 from panda3d.bullet import *
 import numpy as np
 
-class MyApp(ShowBase):
-    MOTOR_POWER = 10
+class Panda3dApp(ShowBase):
+    MOTOR_POWER = 8
     def __init__(self, walker, is_displaying):
         # World
         self.is_displaying = is_displaying
@@ -16,18 +16,26 @@ class MyApp(ShowBase):
         self.walker = walker
         if self.is_displaying:
             self._init_display()
+        self._init_plane()
 
+    def load_shape(self, shape):
+        self.shape = shape
+        self.bone_nodes = []
+        self.joint_constraints = []
+        [self._init_bone(bone) for bone in self.shape.bones]
+        [self._init_joint(joint) for joint in self.shape.joints]
+        self.restart_bones_position()
 
     def _init_display(self):
         print("Setting up display")
         ShowBase.__init__(self)
-        self.add_light()
+        self._add_light()
         taskMgr.add(self.spinCameraTask, "SpinCameraTask")
         base.cam.setPos(0, -50, 20)
         base.cam.lookAt(0, 0, 0)
-        # self.add_debug()
+        # self._add_debug()
 
-    def add_debug(self):
+    def _add_debug(self):
         debug_node = BulletDebugNode('Debug')
         debug_node.showWireframe(True)
         debug_node.showConstraints(True)
@@ -37,7 +45,7 @@ class MyApp(ShowBase):
         debug_np.show()
         self.world.setDebugNode(debug_np.node())
 
-    def add_light(self):
+    def _add_light(self):
         ambientLight = AmbientLight('ambientLight')
         ambientLight.setColor(Vec4(0.2, 0.2, 0.2, 1))
         ambientLightNP = render.attachNewNode(ambientLight)
@@ -58,12 +66,12 @@ class MyApp(ShowBase):
         render.setAntialias(AntialiasAttrib.MAuto)
         render.setShaderAuto()
 
-    def light_track(self):
+    def _light_track(self):
         self.tracker_light_np.setPos(self.get_com()+Vec3(0,80,30))
         self.tracker_light_np.lookAt(self.get_com())
 
 
-    def init_plane(self):
+    def _init_plane(self):
         # Plane
         shape = BulletPlaneShape(Vec3(0, 0, 1), 1)
         self.ground_node2 = BulletRigidBodyNode('Ground')
@@ -81,32 +89,43 @@ class MyApp(ShowBase):
             self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
 
 
-    def get_bones_positions(self):
-        return [[list(bone.node.getTransform().getPos()), list(bone.node.getTransform().getHpr())] for bone in self.walker.bones]
+    def save_shape_posture(self):
+        com = self.get_com()
+        com[2] = 0
+        for bone in self.shape.bones:
+            pos = self.bone_nodes[bone.index].getTransform().getPos()
+            hpr = self.bone_nodes[bone.index].getTransform().getHpr()
+            pos = pos - com
+            bone.start_pos = pos
+            bone.start_hpr = hpr
 
-    def init_bone(self, bone, position, index):
-        # Box
-        shape = BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
+    def restart_bones_position(self):
+        for bone in self.shape.bones:
+            self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(bone.start_pos, bone.start_hpr))
+
+    def get_bones_positions(self):
+        return [[list(node.getTransform().getPos()), list(node.getTransform().getHpr())] for node in self.bone_nodes]
+
+    def _init_bone(self, bone):
+        box_shape = BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
         ts = TransformState.makePos(Point3(bone.length, bone.height, bone.width))
-        bone.node = BulletRigidBodyNode('Bone%d' % index)
-        bone.node.setMass(bone.mass)
-        bone.node.setFriction(bone.friction)
-        bone.node.addShape(shape, ts)
-        # import pdb; pdb.set_trace()
-        bone.node.setTransform(TransformState.makePosHpr(Vec3(*position[0]), Vec3(*position[1])))
-        self.world.attachRigidBody(bone.node)
+        node = BulletRigidBodyNode('Bone%d' % bone.index)
+        self.bone_nodes.append(node)
+        node.setMass(bone.mass)
+        node.setFriction(bone.friction)
+        node.addShape(box_shape, ts)
+        node.setTransform(TransformState.makePosHpr(Vec3(*bone.start_pos), Vec3(*bone.start_hpr)))
+        self.world.attachRigidBody(node)
 
         if self.is_displaying:
-            bone.np = render.attachNewNode(bone.node)
-            # bone.np.setPos(position[0])
-            # bone.np.setHpr(position[1])
-            bone.np.setShaderAuto()
+            np = render.attachNewNode(node)
+            np.setShaderAuto()
             bone.model = loader.loadModel('models/box.egg')
             bone.model.setScale(Vec3(2*bone.length, 2*bone.height, 2*bone.width))
-            bone.model.reparentTo(bone.np)
-            bone.np.setColor(0.6, 0.6, 1.0, 1.0)
+            bone.model.reparentTo(np)
+            np.setColor(0.6, 0.6, 1.0, 1.0)
 
-    def add_joint_ball(self, bone):
+    def _init_joint_ball(self, bone):
         if bone.has_joint_ball:
             return
         model = loader.loadModel('smiley.egg')
@@ -120,35 +139,36 @@ class MyApp(ShowBase):
 
         bone.has_joint_ball = True
 
-    def add_joint(self, parent_bone, child_bone, hpr, pos):
-        # self.add_joint_ball(parent_bone)
+    def _init_joint(self, joint):
+        parent_bone = joint.parent_bone
+        child_bone = joint.child_bone
+        # self._init_joint_ball(parent_bone)
         parent_frame_pos = Vec3(parent_bone.length * 2 + self.walker.BUFFER_LENGTH, parent_bone.height, parent_bone.width)
         child_frame_pos = Vec3(-self.walker.BUFFER_LENGTH, child_bone.height, child_bone.width)
         parent_frame = TransformState.makePos(parent_frame_pos)
-        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(*hpr))
-        constraint = BulletHingeConstraint(parent_bone.node, child_bone.node, parent_frame, child_frame)
-        constraint.setLimit(-120, 120)
-        constraint.enableFeedback(False)
-        self.world.attachConstraint(constraint)
-        return constraint
+        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(joint.heading, joint.pitch, joint.range))
+        joint.constraint = BulletHingeConstraint(self.bone_nodes[parent_bone.index], self.bone_nodes[child_bone.index], parent_frame, child_frame)
+        joint.constraint.setLimit(joint.min_angle, joint.max_angle)
+        joint.constraint.enableFeedback(False)
+        self.world.attachConstraint(joint.constraint)
 
     def get_joint_angles(self):
-        return [joint.constraint.getHingeAngle() for joint in self.walker.joints]
+        return [joint.constraint.getHingeAngle() for joint in self.shape.joints]
 
     def get_bones_z(self):
-        return [bone.node.getTransform().getPos()[2] for bone in self.walker.bones]
+        return [node.getTransform().getPos()[2] for node in self.bone_nodes]
 
     def apply_action(self, action):
-        for i in range(len(self.walker.joints)):
-            self.walker.joints[i].constraint.enableAngularMotor(True, action[i] + 0.0001, self.MOTOR_POWER)
+        for i in range(len(self.shape.joints)):
+            self.shape.joints[i].constraint.enableAngularMotor(True, action[i] + 0.0001, self.MOTOR_POWER)
 
 
     def get_com(self):
-        positions = [bone.node.getTransform().getPos() for bone in self.walker.bones]
+        positions = [node.getTransform().getPos() for node in self.bone_nodes]
         com = Vec3(0, 0, 0)
         for p in positions:
             com += p
-        com /= len(self.walker.bones)
+        com /= len(self.shape.bones)
         return com
 
     def spinCameraTask(self, task):
@@ -157,9 +177,9 @@ class MyApp(ShowBase):
             new_cam_pos = self.get_com() + Vec3(20 * math.sin(angleRadians), -20.0 * math.cos(angleRadians), 3)
             self.camera.setPos(new_cam_pos)
             self.camera.setHpr(angleDegrees, 0, 0)
-            self.light_track()
-            j = self.walker.joints[0]
-            # for j in self.walker.joints:
+            self._light_track()
+            j = self.shape.joints[0]
+            # for j in self.shape.joints:
                 # import pdb; pdb.set_trace()
             return Task.cont
 
@@ -182,10 +202,9 @@ class MyApp(ShowBase):
         result = self.world.contactTest(self.ground_node2)
         names = [contact.getNode0().getName() for contact in result.getContacts()]
         indices = [int(name[4]) for name in names if name.startswith("Bone")]
-        contacts = np.zeros(len(self.walker.bones))
+        contacts = np.zeros(len(self.shape.bones))
         contacts[indices] = 1
         return contacts
-
 
     def physical_step(self, action, dt):
         self.apply_action(action)
@@ -194,7 +213,7 @@ class MyApp(ShowBase):
             taskMgr.step()
 
     def head_hpr(self):
-        return self.walker.bones[0].node.getTransform().getPos()
+        return self.shape.bones[0].node.getTransform().getPos()
 
     def debug_screen_print(self, action, state, reward, score):
         if not self.is_displaying:

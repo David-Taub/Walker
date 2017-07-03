@@ -211,6 +211,8 @@ def main():
     l = Learner(is_displaying, no_explore, use_keyboard)
     if use_keyboard:
         l.show()
+        return
+    l.train()
 
 
 if __name__ == "__main__":
