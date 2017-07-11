@@ -1,5 +1,5 @@
+# tensorboard --logdir=C:\Users\booga\Dropbox\bio\projects\Walker\dqn\summary
 # python C:\Users\booga\Dropbox\bio\projects\Walker\reinfLearn.py
-
 import numpy as np
 import os, random, math, itertools, sys, time
 import tensorflow as tf
@@ -17,21 +17,23 @@ START_EXPLOIT_PROB  = 1 #Starting chance of random action
 END_EXPLOIT_PROB    = 0.2 #Final chance of random action
 NUM_EPISODES        = 200000 #How many episodes of game environment to train network with.
 ANNEALING_STEPS     = 15000 #How many steps of training to reduce START_EXPLOIT_PROB to END_EXPLOIT_PROB.
-PRE_TRAIN_STEPS     = 1000 #How many steps of random actions before training begins.
+PRE_TRAIN_STEPS     = 500 #How many steps of random actions before training begins.
+STEPS_IN_PACE       = 10 #steps in a pace
 MAX_PACES_IN_EPISODE= 10 #The max allowed paces in an episode
-STEPS_IN_PACE       = 6 #steps in a pace
-BASE_DIR            = os.path.dirname(sys.argv[0])+"/dqn" #The path to save our model to.
+BASE_DIR            = os.path.join(os.path.dirname(sys.argv[0]), "dqn") #The path to save our model to.
 TAU                 = 0.001 #Rate to update target network toward primary network
 EPISODES_BETWEEN_SAVE = 10000
-STEPS_BETWEEN_DQN_TRAIN = 2 #How often to  a traBETWEEN_perforg step.
+STEPS_BETWEEN_DQN_TRAIN = 5 #How often to  a traBETWEEN_perforg step.
+TRAINS_BETWEEN_TF_SUMMARY = 10
 EPISODES_BETWEEN_BIG_SUMMERY = 15
 STOP_EPISODE_SCORE_THRESHOLD = -3
-STOP_EPISODE_STATE_THRESHOLD = 0.0001
+STOP_EPISODE_STATE_THRESHOLD = 0.01
 
 class Learner(object):
     def gen_target_ops(self):
         trainable_variables = tf.trainable_variables()
         total_vars = len(trainable_variables)
+        print("Trainable Variables: %d" % total_vars)
         self.target_ops = []
         for idx, var in enumerate(trainable_variables[0:total_vars // 2]):
             # convex combination of new and old values
@@ -47,71 +49,87 @@ class Learner(object):
     def _load_model(self):
         try:
             print('Loading Model...')
-            ckpt = tf.train.get_checkpoint_state(BASE_DIR)
-            print('Loading %s' % ckpt.model_checkpoint_path)
-            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+            if not os.path.exists(BASE_DIR):
+                os.makedirs(BASE_DIR)
+            else:
+                ckpt = tf.train.get_checkpoint_state(BASE_DIR)
+                print('Loading %s' % ckpt.model_checkpoint_path)
+                self.saver.restore(self.sess, ckpt.model_checkpoint_path)
         except:
+            import traceback
+            traceback.print_exc()
             print("LOADING FAILED")
 
-    def __init__(self, is_displaying, no_explore, use_keyboard):
+    def __enter__(self):
         self.start_time = time.time()
-        tf.reset_default_graph()
-        self.walker = Walker(is_displaying)
-        self.no_explore = no_explore
-        self.explore_prob = 0 if no_explore else START_EXPLOIT_PROB
-        self.mainQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
-        self.targetQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
-        self.saver = tf.train.Saver()
-        self.gen_target_ops()
+        self.walker = Walker(self.is_displaying)
+        self.explore_prob = 0 if self.no_explore else START_EXPLOIT_PROB
         self.training_buffer = ExperienceBuffer()
-        #Set the rate of random action decrease.
-        self.step_drop = (START_EXPLOIT_PROB - END_EXPLOIT_PROB)/ANNEALING_STEPS
         self.episodes_scores = []
-        self.total_steps = 0
-        self.sess = tf.Session()
 
-        #Make a path for our model to be saved in.
-        if not os.path.exists(BASE_DIR):
-            os.makedirs(BASE_DIR)
-            self.load_model = False
-        else:
-            self.load_model = True
+        tf.reset_default_graph()
+        self.mainQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
+        # self.targetQN = QNetwork(self.walker.get_state_sizes(), self.walker.action_size())
+        self.saver = tf.train.Saver()
+        # self.gen_target_ops()
+        #Set the rate of random action decrease.
+        self.sess = tf.Session()
+        self.merged_summary = tf.summary.merge_all()
+        self.file_writer = tf.summary.FileWriter(os.path.join(BASE_DIR, 'summary'))
+        self.file_writer.add_graph(self.sess.graph)
+        self._load_model()
         self.sess.run(tf.global_variables_initializer())
-        if self.load_model:
-            self._load_model()
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.file_writer.close()
+        self._save_tf_model()
+
+    def __init__(self, is_displaying, no_explore, use_keyboard):
+        self.is_displaying = is_displaying
+        self.no_explore = no_explore
+        self.total_steps = 0
+
+    def _save_tf_model(self, index = 0):
+        try:
+            self.saver.save(self.sess, BASE_DIR+'/model-'+str(index)+'.cptk')
+            print("Saved model")
+        except:
+            print("SAVING FAILED!")
+            import traceback
+            traceback.print_exc()
+
 
     def _episode_summery(self, index, pace_count):
         elapsed = time.time() - self.start_time
         print("Episode %d -\tScore %.2f\tSteps: %d\tTime: %.2f sec" % (index, self.episodes_scores[-1], pace_count * STEPS_IN_PACE, elapsed))
         self.start_time = time.time()
+
         if index % EPISODES_BETWEEN_SAVE == 0:
-            try:
-                self.saver.save(self.sess, BASE_DIR+'/model-'+str(index)+'.cptk')
-                print("Saved model")
-            except:
-                print("SAVING FAILED!")
-        avg_score = np.mean(self.episodes_scores[-10:])
+            self._save_tf_model(index)
         if index % EPISODES_BETWEEN_BIG_SUMMERY == 0:
+            avg_score = np.mean(self.episodes_scores)
+            self.episodes_scores = []
             print("Average scores: %.2f" % avg_score)
             print("Total Q: %.2f" % self.mainQN.pop_total_q())
             print("Explore probability: %.2f" % self.explore_prob)
             print("L2 of weights: %.2f" % self.sess.run(self.mainQN.regularizers))
-        max_good_threshold = 10
-        min_good_threshold = 0
-        trimmed_score = max(min(avg_score, max_good_threshold), min_good_threshold)
-        trimmed_score = trimmed_score / (max_good_threshold - min_good_threshold)
-        self.explore_prob = 0 if self.no_explore else 0.1 + 0.8 * (1 - trimmed_score)
+            print("In replay memory: %d / %d" % (len(self.training_buffer.buffer), self.training_buffer.buffer_size))
+            max_good_threshold = 10
+            min_good_threshold = 0
+            trimmed_score = max(min(avg_score, max_good_threshold), min_good_threshold)
+            trimmed_score = trimmed_score / (max_good_threshold - min_good_threshold)
+            self.explore_prob = 0 if self.no_explore else 0.1 + 0.8 * (1 - trimmed_score)
 
     def train(self):
         print("Start of training")
 
         # do stuff
-        self.update_target()
+        # self.update_target()
         for i in range(NUM_EPISODES):
             pace_count = self._run_episode()
             #Periodically save the model.
             self._episode_summery(i, pace_count)
-        self.saver.save(self.sess, BASE_DIR+'/model-'+str(i)+'.cptk')
 
     # pace is a run of a few steps, without interrupting, either in explore mode or exploit mode
     def _run_pace(self, state, replay_buffer):
@@ -135,8 +153,9 @@ class Learner(object):
         self.total_steps += 1
         if self.total_steps <= PRE_TRAIN_STEPS:
             return
-        if self.total_steps % (STEPS_BETWEEN_DQN_TRAIN) == 0:
+        if self.total_steps % STEPS_BETWEEN_DQN_TRAIN == 0:
             self._batch_train_QN()
+
         # if self.explore_prob > END_EXPLOIT_PROB:
         #     self.explore_prob -= self.step_drop
 
@@ -153,20 +172,29 @@ class Learner(object):
     def _batch_train_QN(self):
         train_batch = self.training_buffer.sample(BATCH_SIZE) #Get a random batch of experiences.
         #Below we perform the Double-DQN update to the target Q-values
-        actions = self.mainQN.predict(np.vstack(train_batch[:, 3]), self.sess)
+        s = np.vstack(train_batch[:,0])
+        a = np.vstack(train_batch[:,1])
+        r = train_batch[:, 2]
+        s1 = np.vstack(train_batch[:, 3])
+        a1 = self.mainQN.predict(s1, self.sess)
 
-        feed_dict = self.targetQN.states_to_feed_dict(np.vstack(train_batch[:, 3]))
-        feed_dict[self.targetQN.action_input] = actions
-        doubleQ = self.sess.run(self.targetQN.Q_est, feed_dict=feed_dict)[:,0]
-        targetQ = train_batch[:, 2] + (DISCOUNT * doubleQ)
-        # import pdb; pdb.set_trace()
+        # feed_dict = self.targetQN.states_to_feed_dict(s1, a1)
+        feed_dict = self.mainQN.states_to_feed_dict(s1, a1)
+        # doubleQ = self.sess.run(self.targetQN.Q_est, feed_dict=feed_dict)[:,0]
+        doubleQ = self.sess.run(self.mainQN.Q_est, feed_dict=feed_dict)[:,0]
+        targetQ = r + (DISCOUNT * doubleQ)
         #Update the network with our target values.
-        feed_dict = self.mainQN.states_to_feed_dict(np.vstack(train_batch[:,0]))
-        feed_dict[self.mainQN.action_input] = np.vstack(train_batch[:,1])
+        feed_dict = self.mainQN.states_to_feed_dict(s, a)
         feed_dict[self.mainQN.targetQ] = targetQ
 
         self.sess.run(self.mainQN.update_model, feed_dict = feed_dict)
-        self.update_target() #Set the target network to be equal to the primary network.
+        if self.total_steps % (TRAINS_BETWEEN_TF_SUMMARY * STEPS_BETWEEN_DQN_TRAIN) == 0:
+            s = self.sess.run(self.merged_summary, feed_dict = feed_dict)
+            self.file_writer.add_summary(s, self.total_steps)
+            print("Summary added")
+
+        # self.update_target() #Set the target network to be equal to the primary network.
+
 
     def _run_episode(self):
         episode_buffer = ExperienceBuffer()
@@ -176,6 +204,7 @@ class Learner(object):
             state = self._run_pace(state, episode_buffer)
             if state is None:
                 break
+
         self.training_buffer.add(episode_buffer.buffer)
         self.episodes_scores.append(self.walker.score())
         return pace_index + 1
@@ -194,7 +223,6 @@ class Learner(object):
             action[[is_down(button) for button in ups]] = 1.0
             action[[is_down(button) for button in downs]] = -1.0
             state, _ = self.walker.step(action.tolist())
-            print(state)
             if is_down(KeyboardButton.ascii_key(b'r')):
                 state = self.walker.reset()
 
@@ -208,11 +236,11 @@ def main():
         {"show": (True, False, False),
          "expl": (True, True, False),
          "kbrd": (True, False, True)}[sys.argv[1]]
-    l = Learner(is_displaying, no_explore, use_keyboard)
-    if use_keyboard:
-        l.show()
-        return
-    l.train()
+    with Learner(is_displaying, no_explore, use_keyboard) as l:
+        if use_keyboard:
+            l.show()
+            return
+        l.train()
 
 
 if __name__ == "__main__":

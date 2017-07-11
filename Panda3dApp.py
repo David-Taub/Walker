@@ -7,7 +7,6 @@ from panda3d.bullet import *
 import numpy as np
 
 class Panda3dApp(ShowBase):
-    MOTOR_POWER = 8
     def __init__(self, walker, is_displaying):
         # World
         self.is_displaying = is_displaying
@@ -96,12 +95,12 @@ class Panda3dApp(ShowBase):
             pos = self.bone_nodes[bone.index].getTransform().getPos()
             hpr = self.bone_nodes[bone.index].getTransform().getHpr()
             pos = pos - com
-            bone.start_pos = pos
-            bone.start_hpr = hpr
+            bone.start_pos = Vec3(pos)
+            bone.start_hpr = Vec3(hpr)
 
     def restart_bones_position(self):
         for bone in self.shape.bones:
-            self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(bone.start_pos, bone.start_hpr))
+            self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(Vec3(bone.start_pos),Vec3(bone.start_hpr)))
 
     def get_bones_positions(self):
         return [[list(node.getTransform().getPos()), list(node.getTransform().getHpr())] for node in self.bone_nodes]
@@ -125,42 +124,43 @@ class Panda3dApp(ShowBase):
             bone.model.reparentTo(np)
             np.setColor(0.6, 0.6, 1.0, 1.0)
 
-    def _init_joint_ball(self, bone):
-        if bone.has_joint_ball:
-            return
-        model = loader.loadModel('smiley.egg')
-        model.reparentTo(render)
-        scale_vec = Vec3(self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH,self.walker.BUFFER_LENGTH)
-        model.setTransform(TransformState.makePos(Point3(bone.length * 2 + self.walker.BUFFER_LENGTH, bone.height, bone.width)))
-        model.setScale(scale_vec)
-        tex = loader.loadTexture('maps/noise.rgb')
-        model.setTexture(tex, 1)
-        model.reparentTo(bone.np)
+    # def _init_joint_ball(self, bone):
+    #     if bone.has_joint_ball:
+    #         return
+    #     model = loader.loadModel('smiley.egg')
+    #     model.reparentTo(render)
+    #     scale_vec = Vec3(joint.gap_radius,joint.gap_radius,joint.gap_radius)
+    #     model.setTransform(TransformState.makePos(Point3(bone.length * 2 + joint.gap_radius, bone.height, bone.width)))
+    #     model.setScale(scale_vec)
+    #     tex = loader.loadTexture('maps/noise.rgb')
+    #     model.setTexture(tex, 1)
+    #     model.reparentTo(bone.np)
 
-        bone.has_joint_ball = True
+    #     bone.has_joint_ball = True
 
     def _init_joint(self, joint):
         parent_bone = joint.parent_bone
         child_bone = joint.child_bone
         # self._init_joint_ball(parent_bone)
-        parent_frame_pos = Vec3(parent_bone.length * 2 + self.walker.BUFFER_LENGTH, parent_bone.height, parent_bone.width)
-        child_frame_pos = Vec3(-self.walker.BUFFER_LENGTH, child_bone.height, child_bone.width)
+        parent_frame_pos = Vec3(parent_bone.length * 2 + joint.gap_radius, parent_bone.height, parent_bone.width)
+        child_frame_pos = Vec3(-joint.gap_radius, child_bone.height, child_bone.width)
         parent_frame = TransformState.makePos(parent_frame_pos)
-        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(joint.heading, joint.pitch, joint.range))
-        joint.constraint = BulletHingeConstraint(self.bone_nodes[parent_bone.index], self.bone_nodes[child_bone.index], parent_frame, child_frame)
-        joint.constraint.setLimit(joint.min_angle, joint.max_angle)
-        joint.constraint.enableFeedback(False)
-        self.world.attachConstraint(joint.constraint)
+        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(joint.heading, joint.pitch, joint.roll))
+        constraint = BulletHingeConstraint(self.bone_nodes[parent_bone.index], self.bone_nodes[child_bone.index], parent_frame, child_frame)
+        constraint.setLimit(joint.min_angle, joint.max_angle)
+        constraint.enableFeedback(False)
+        self.world.attachConstraint(constraint)
+        self.joint_constraints.append(constraint)
 
     def get_joint_angles(self):
-        return [joint.constraint.getHingeAngle() for joint in self.shape.joints]
+        return [constraint.getHingeAngle() for constraint in self.joint_constraints]
 
     def get_bones_z(self):
         return [node.getTransform().getPos()[2] for node in self.bone_nodes]
 
     def apply_action(self, action):
         for i in range(len(self.shape.joints)):
-            self.shape.joints[i].constraint.enableAngularMotor(True, action[i] + 0.0001, self.MOTOR_POWER)
+            self.joint_constraints[i].enableAngularMotor(True, action[i]*self.shape.joints[i].action_factor, self.shape.joints[i].power)
 
 
     def get_com(self):
@@ -168,7 +168,7 @@ class Panda3dApp(ShowBase):
         com = Vec3(0, 0, 0)
         for p in positions:
             com += p
-        com /= len(self.shape.bones)
+        com /= len(self.bone_nodes)
         return com
 
     def spinCameraTask(self, task):
@@ -206,11 +206,12 @@ class Panda3dApp(ShowBase):
         contacts[indices] = 1
         return contacts
 
-    def physical_step(self, action, dt):
-        self.apply_action(action)
-        self.world.doPhysics(dt, 3)
-        if self.is_displaying:
-            taskMgr.step()
+    def step(self, action, dt, physical_steps_in_step):
+        for i in range(physical_steps_in_step):
+            self.apply_action(action)
+            self.world.doPhysics(dt/physical_steps_in_step)
+            if self.is_displaying:
+                taskMgr.step()
 
     def head_hpr(self):
         return self.shape.bones[0].node.getTransform().getPos()

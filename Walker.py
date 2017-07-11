@@ -2,12 +2,11 @@
 import random, math, sys, pickle, os
 import numpy as np
 from Panda3dApp import Panda3dApp
-from Shape import Shape, WormShape
+from Shape import Shape, Spider
 
+TIME_STEP = 0.1
+PHYSICAL_STEPS_IN_STEP = 5
 class Walker(object):
-    BUFFER_LENGTH = 0.6
-    TIME_STEP = 0.1
-    PHYSICAL_STEPS_IN_STEP = 15
 
     def __init__(self, is_displaying):
         self.last_score = 0
@@ -19,8 +18,8 @@ class Walker(object):
         return os.path.join(os.path.dirname(sys.argv[0]), 'shape.pickle')
 
     def reset(self):
-        self.last_score = 0
         self.app.restart_bones_position()
+        self.last_score = self.score()
         return self.get_state()
 
     def _init_shape(self):
@@ -31,7 +30,7 @@ class Walker(object):
             self.app.load_shape(self.shape)
             return
         print("Generating shape")
-        self.shape = Shape()
+        self.shape = Spider()
         # self.shape = WormShape()
         self.app.load_shape(self.shape)
         print("Positioning shape in start posture")
@@ -60,7 +59,7 @@ class Walker(object):
             print("DUMP FAILED! %s" % self._get_pickle_path())
 
     def step(self, action, add_debug = True):
-        self.app.physical_step(action, self.TIME_STEP)
+        self.app.step(action, TIME_STEP, PHYSICAL_STEPS_IN_STEP)
         state, reward = self.get_state(), self.get_reward()
         if add_debug:
             self.app.debug_screen_print(action, state, reward, self.score())
@@ -73,14 +72,15 @@ class Walker(object):
         state = np.array([])
         if return_sizes:
             sizes = []
-        joints_angles = np.array(self.app.get_joint_angles())
+        joints_angles = np.array(self.app.get_joint_angles()) / 180
         bones_z = np.array(self.app.get_bones_z())
         bones_contacts = self.app.get_contacts()
 
         for part in self.shape.parts:
+            # todo: make each bone position relative to it part com
             state_part = np.array(self.app.get_bones_positions())[part, 0] - self.app.get_com()
             state_part = np.append(state_part, bones_contacts[part])
-            state_part = np.append(state_part, joints_angles[part[1:]-1] / 180)
+            state_part = np.append(state_part, joints_angles[part[1:]-1])
             if return_sizes:
                 sizes.append(state_part.shape[0])
             state = np.append(state, state_part)
@@ -90,8 +90,8 @@ class Walker(object):
         return np.array(state)
 
     def score(self):
-        return self.app.get_com().length()
-        # return self.app.get_com()[2] + self.app.get_com()[1]
+        # return self.app.get_com().length()
+        return self.app.get_com()[2] + self.app.get_com()[1]
 
     def get_reward(self):
         new_score = self.score()
