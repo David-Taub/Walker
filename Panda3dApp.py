@@ -6,6 +6,8 @@ from panda3d.core import *
 from panda3d.bullet import *
 import numpy as np
 
+
+PLANE_FRICTION = 100
 class Panda3dApp(ShowBase):
     def __init__(self, walker, is_displaying):
         # World
@@ -30,7 +32,7 @@ class Panda3dApp(ShowBase):
         ShowBase.__init__(self)
         self._add_light()
         taskMgr.add(self.spinCameraTask, "SpinCameraTask")
-        base.cam.setPos(0, -50, 20)
+        base.cam.setPos(0, -40, 20)
         base.cam.lookAt(0, 0, 0)
         # self._add_debug()
 
@@ -51,14 +53,14 @@ class Panda3dApp(ShowBase):
         render.setLight(ambientLightNP)
         # SpotLight
         self.tracker_light_np = render.attachNewNode(Spotlight("tracker"))
-        self.tracker_light_np.setPos(0,80,30)
-        self.tracker_light_np.lookAt(0,0,0)
+        self.tracker_light_np.setPos(0, 80, 30)
+        self.tracker_light_np.lookAt(0, 0, 0)
         self.tracker_light_np.node().setShadowCaster(True, 1024, 1024)
         self.tracker_light_np.node().getLens().setFov(90)
         render.setLight(self.tracker_light_np)
         slight = render.attachNewNode(Spotlight("Spot2"))
-        slight.setPos(80,0,30)
-        slight.lookAt(0,0,0)
+        slight.setPos(80, 0, 30)
+        slight.lookAt(0, 0, 0)
         slight.node().setShadowCaster(True, 1024, 1024)
         slight.node().getLens().setFov(90)
         render.setLight(slight)
@@ -66,27 +68,25 @@ class Panda3dApp(ShowBase):
         render.setShaderAuto()
 
     def _light_track(self):
-        self.tracker_light_np.setPos(self.get_com()+Vec3(0,80,30))
+        self.tracker_light_np.setPos(self.get_com() + Vec3(0, 80, 30))
         self.tracker_light_np.lookAt(self.get_com())
-
 
     def _init_plane(self):
         # Plane
-        shape = BulletPlaneShape(Vec3(0, 0, 1), 1)
+        shape = BulletPlaneShape(Vec3(0, 0, 10), 1)
         self.ground_node2 = BulletRigidBodyNode('Ground')
         self.ground_node2.addShape(shape)
-        self.ground_node2.setFriction(1)
+        self.ground_node2.setTransform(TransformState.makePos(Vec3(0, 0, -1)))
+        self.ground_node2.setFriction(PLANE_FRICTION)
         self.world.attachRigidBody(self.ground_node2)
-        self.plane = Plane(Vec3(0, 0, 0), Point3(0, 0, 0))
         if self.is_displaying:
             cm = CardMaker('')
-            cm.setFrame(-1000, 1000, -1000, 1000)
+            cm.setFrame(-100, 100, -100, 100)
             self.ground_node = cm.generate()
             self.ground_np = render.attachNewNode(self.ground_node)
-            self.ground_np.lookAt(0, 0, -1)
-            self.ground_np.setPos(Vec3(0,0,1))
+            self.ground_np.lookAt(0, 0, -10)
+            self.ground_np.setPos(Vec3(0, 0, 0))
             self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
-
 
     def save_shape_posture(self):
         com = self.get_com()
@@ -100,14 +100,15 @@ class Panda3dApp(ShowBase):
 
     def restart_bones_position(self):
         for bone in self.shape.bones:
-            self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(Vec3(bone.start_pos),Vec3(bone.start_hpr)))
+            self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(Vec3(bone.start_pos), Vec3(bone.start_hpr)))
 
     def get_bones_positions(self):
-        return [[list(node.getTransform().getPos()), list(node.getTransform().getHpr())] for node in self.bone_nodes]
+        return [node.getTransform().getPos() for node in self.bone_nodes]
 
     def _init_bone(self, bone):
         box_shape = BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
-        ts = TransformState.makePos(Point3(bone.length, bone.height, bone.width))
+        # ts = TransformState.makePos(Point3(bone.length, bone.height, bone.width))
+        ts = TransformState.makePos(Point3(0, 0, 0))
         node = BulletRigidBodyNode('Bone%d' % bone.index)
         self.bone_nodes.append(node)
         node.setMass(bone.mass)
@@ -120,7 +121,8 @@ class Panda3dApp(ShowBase):
             np = render.attachNewNode(node)
             np.setShaderAuto()
             bone.model = loader.loadModel('models/box.egg')
-            bone.model.setScale(Vec3(2*bone.length, 2*bone.height, 2*bone.width))
+            bone.model.setScale(Vec3(bone.length, bone.height, bone.width) * 2)
+            bone.model.setPos(Vec3(-bone.length, -bone.height, -bone.width))
             bone.model.reparentTo(np)
             np.setColor(0.6, 0.6, 1.0, 1.0)
 
@@ -142,8 +144,8 @@ class Panda3dApp(ShowBase):
         parent_bone = joint.parent_bone
         child_bone = joint.child_bone
         # self._init_joint_ball(parent_bone)
-        parent_frame_pos = Vec3(parent_bone.length * 2 + joint.gap_radius, parent_bone.height, parent_bone.width)
-        child_frame_pos = Vec3(-joint.gap_radius, child_bone.height, child_bone.width)
+        parent_frame_pos = Vec3(parent_bone.length + joint.gap_radius, 0, 0)
+        child_frame_pos = Vec3(-child_bone.length - joint.gap_radius, 0, 0)
         parent_frame = TransformState.makePos(parent_frame_pos)
         child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(joint.heading, joint.pitch, joint.roll))
         constraint = BulletHingeConstraint(self.bone_nodes[parent_bone.index], self.bone_nodes[child_bone.index], parent_frame, child_frame)
@@ -163,25 +165,27 @@ class Panda3dApp(ShowBase):
             self.joint_constraints[i].enableAngularMotor(True, action[i]*self.shape.joints[i].action_factor, self.shape.joints[i].power)
 
 
-    def get_com(self):
-        positions = [node.getTransform().getPos() for node in self.bone_nodes]
-        com = Vec3(0, 0, 0)
-        for p in positions:
-            com += p
-        com /= len(self.bone_nodes)
-        return com
+    def get_com(self, part = None):
+        if part is None:
+            part = range(len(self.bone_nodes))
+        positions = [self.bone_nodes[i].getTransform().getPos() for i in part]
+        masses = [self.bone_nodes[i].getMass() for i in part]
+
+        mean = Vec3(0, 0, 0)
+        for i in range(len(positions)):
+            mean += positions[i] * masses[i]
+        mean /= sum(masses)
+        return mean
 
     def spinCameraTask(self, task):
-            angleDegrees = task.time * 6.0
-            angleRadians = angleDegrees * (math.pi / 180.0)
-            new_cam_pos = self.get_com() + Vec3(20 * math.sin(angleRadians), -20.0 * math.cos(angleRadians), 3)
-            self.camera.setPos(new_cam_pos)
-            self.camera.setHpr(angleDegrees, 0, 0)
-            self._light_track()
-            j = self.shape.joints[0]
-            # for j in self.shape.joints:
-                # import pdb; pdb.set_trace()
-            return Task.cont
+        CAMERA_DISTANCE = 8
+        angleDegrees = task.time * 6.0
+        angleRadians = angleDegrees * (math.pi / 180.0)
+        new_cam_pos = self.get_com() + (Vec3(math.sin(angleRadians), -math.cos(angleRadians), 0.05) * CAMERA_DISTANCE)
+        self.camera.setPos(new_cam_pos)
+        self.camera.lookAt(self.get_com())
+        self._light_track()
+        return Task.cont
 
     def remove_shape(self):
 
@@ -209,12 +213,10 @@ class Panda3dApp(ShowBase):
     def step(self, action, dt, physical_steps_in_step):
         for i in range(physical_steps_in_step):
             self.apply_action(action)
-            self.world.doPhysics(dt/physical_steps_in_step)
+            self.world.doPhysics(dt)
             if self.is_displaying:
                 taskMgr.step()
 
-    def head_hpr(self):
-        return self.shape.bones[0].node.getTransform().getPos()
 
     def debug_screen_print(self, action, state, reward, score):
         if not self.is_displaying:
@@ -224,6 +226,6 @@ class Panda3dApp(ShowBase):
         except:
             pass
 
-        text = "Score: %.2f Actions: %s" % (score, [int(a) for a in action])
+        text = "Score: %.2f Actions: %s, Reward: %.2f" % (score, [int(a) for a in action], reward)
         self.textObject = OnscreenText(text = text, pos = (0.1, 0.1), scale = 0.07, align = TextNode.ALeft)
         self.textObject.reparentTo(base.a2dBottomLeft)
