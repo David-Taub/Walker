@@ -1,6 +1,8 @@
 
-import random, math, sys, pickle, os
-import numpy as np
+import sys
+import pickle
+import os
+# import numpy as np
 from Panda3dApp import Panda3dApp
 from Shape import Shape, Spider
 

@@ -1,3 +1,4 @@
+import logging
 from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
 import math, random
@@ -99,6 +100,7 @@ class Panda3dApp(ShowBase):
             bone.start_hpr = Vec3(hpr)
 
     def restart_bones_position(self):
+        logging.debug("restart_bones_position")
         for bone in self.shape.bones:
             self.bone_nodes[bone.index].setTransform(TransformState.makePosHpr(Vec3(bone.start_pos), Vec3(bone.start_hpr)))
 
