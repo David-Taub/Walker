@@ -2,12 +2,12 @@
 
 # Progs/ython/python cbioDavid/projects/Walker/reinfLearn.py
 
-# tensorboard --logdir=C:\Users\booga\Dropbox\bio\projects\Walker\dqn\summary
+# tensorboard --logdir=C:\Users\booga\Dropbox\projects\Walker\dqn\summary
 
-# rmdir /S /Q C:\Users\booga\Dropbox\bio\projects\Walker\dqn
-# del /F C:\Users\booga\Dropbox\bio\projects\Walker\shape.pickle
+# rmdir /S /Q C:\Users\booga\Dropbox\projects\Walker\dqn
+# del /F C:\Users\booga\Dropbox\projects\Walker\shape.pickle
 
-# rmdir /S /Q C:\Users\booga\Dropbox\bio\projects\Walker\dqn & python C:\Users\booga\Dropbox\bio\projects\Walker\reinfLearn.py
+# rmdir /S /Q C:\Users\booga\Dropbox\projects\Walker\dqn & python C:\Users\booga\Dropbox\projects\Walker\reinfLearn.py
 import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s %(relativeCreated)6d %(threadName)s %(message)s')
 import numpy as np
