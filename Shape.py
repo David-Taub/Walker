@@ -124,27 +124,27 @@ class Spider(Shape):
         self.legs.append(part)
 
 
-# class WormShape(Shape):
-#     def __init__(self):
-#         print("Generating worm shape")
-#         self.N = 4
-#         self._init_bones_traits()
-#         self._gen_connections()
+class Worm(Shape):
+    def __init__(self):
+        print("Generating worm shape")
+        self.N = 4
+        self._init_bones_traits()
+        self._gen_connections()
 
-#     def _init_bones_traits(self):
-#         self.lengths = [5] * self.N
-#         self.widths = [0.5] * self.N
-#         self.heights = [0.5] * self.N
-#         self.masses = [3.5] * self.N
-#         self.frictions = [500] * self.N
-#         self.lengths[0] = 7
-#         self.widths[0] = 7
-#         self.masses[0] = 10
-#         self.heights[0] = 7
-#         self.frictions[0] = 0.3
-#         self.pitches = [0] * self.N
-#         self.positions = [[(i, i, INIT_Z), (0,0,0) ] for i in self.lengths]
+    def _init_bones_traits(self):
+        self.lengths = [5] * self.N
+        self.widths = [0.5] * self.N
+        self.heights = [0.5] * self.N
+        self.masses = [3.5] * self.N
+        self.frictions = [500] * self.N
+        self.lengths[0] = 7
+        self.widths[0] = 7
+        self.masses[0] = 10
+        self.heights[0] = 7
+        self.frictions[0] = 0.3
+        self.pitches = [0] * self.N
+        self.positions = [[(i, i, INIT_Z), (0, 0, 0)] for i in self.lengths]
 
-#     def _gen_connections(self):
-#         self.connections = list(range(-1, self.N-1))
-#         self.parts = [np.array(range(self.N))]
+    def _gen_connections(self):
+        self.connections = list(range(-1, self.N - 1))
+        self.parts = [np.array(range(self.N))]

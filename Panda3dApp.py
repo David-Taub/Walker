@@ -1,20 +1,26 @@
 import logging
+import math
+
+import numpy as np
+
 from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
-import math, random
 from direct.showbase.ShowBase import ShowBase
+
 from panda3d.core import *
 from panda3d.bullet import *
-import numpy as np
 
 
 PLANE_FRICTION = 100
+GRAVITY_ACCELERATION = 9.81
+
+
 class Panda3dApp(ShowBase):
     def __init__(self, walker, is_displaying):
         # World
         self.is_displaying = is_displaying
         self.world = BulletWorld()
-        self.world.setGravity(Vec3(0, 0, -9.81))
+        self.world.setGravity(Vec3(0, 0, -GRAVITY_ACCELERATION))
         self.walker = walker
         if self.is_displaying:
             self._init_display()
@@ -29,7 +35,10 @@ class Panda3dApp(ShowBase):
         self.restart_bones_position()
 
     def _init_display(self):
-        print("Setting up display")
+
+
+from Shape import Spider
+        logging.debug("Setting up display")
         ShowBase.__init__(self)
         self._add_light()
         taskMgr.add(self.spinCameraTask, "SpinCameraTask")
@@ -69,8 +78,8 @@ class Panda3dApp(ShowBase):
         render.setShaderAuto()
 
     def _light_track(self):
-        self.tracker_light_np.setPos(self.get_com() + Vec3(0, 80, 30))
-        self.tracker_light_np.lookAt(self.get_com())
+        self.tracker_light_np.setPos(self.get_center_of_mass() + Vec3(0, 80, 30))
+        self.tracker_light_np.lookAt(self.get_center_of_mass())
 
     def _init_plane(self):
         # Plane
@@ -90,7 +99,7 @@ class Panda3dApp(ShowBase):
             self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
 
     def save_shape_posture(self):
-        com = self.get_com()
+        com = self.get_center_of_mass()
         com[2] = 0
         for bone in self.shape.bones:
             pos = self.bone_nodes[bone.index].getTransform().getPos()
@@ -167,7 +176,7 @@ class Panda3dApp(ShowBase):
             self.joint_constraints[i].enableAngularMotor(True, action[i]*self.shape.joints[i].action_factor, self.shape.joints[i].power)
 
 
-    def get_com(self, part = None):
+    def get_center_of_mass(self, part = None):
         if part is None:
             part = range(len(self.bone_nodes))
         positions = [self.bone_nodes[i].getTransform().getPos() for i in part]
@@ -183,9 +192,9 @@ class Panda3dApp(ShowBase):
         CAMERA_DISTANCE = 8
         angleDegrees = task.time * 6.0
         angleRadians = angleDegrees * (math.pi / 180.0)
-        new_cam_pos = self.get_com() + (Vec3(math.sin(angleRadians), -math.cos(angleRadians), 0.05) * CAMERA_DISTANCE)
+        new_cam_pos = self.get_center_of_mass() + (Vec3(math.sin(angleRadians), -math.cos(angleRadians), 0.05) * CAMERA_DISTANCE)
         self.camera.setPos(new_cam_pos)
-        self.camera.lookAt(self.get_com())
+        self.camera.lookAt(self.get_center_of_mass())
         self._light_track()
         return Task.cont
 
