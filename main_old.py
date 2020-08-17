@@ -9,7 +9,8 @@
 
 # rmdir /S /Q C:\Users\booga\Dropbox\projects\Walker\dqn & python C:\Users\booga\Dropbox\projects\Walker\reinfLearn.py
 import logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s %(relativeCreated)6d %(threadName)s %(message)s')
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s %(relativeCreated)6d %(threadName)s %(message)s')
 import numpy as np
 from scipy import signal
 import os
@@ -46,6 +47,7 @@ POST_EPISODE_TRAINS = 100
 UPDATES_BETWEEN_SUMMARY = 10
 STEPS_BETWEEN_DQN_TRAIN = 40
 
+
 class Learner(object):
     def _count_subdirs(self, base_dir):
         count = 0
@@ -72,7 +74,6 @@ class Learner(object):
             # convex combination of new and old values
             new_val = (var.value() * TAU) + ((1 - TAU) * trainable_variables[idx + total_vars // 2].value())
             self.target_ops.append(trainable_variables[idx + total_vars // 2].assign(new_val))
-
 
     def _load_model(self):
         try:
@@ -129,7 +130,7 @@ class Learner(object):
     def _episode_summery(self, index, pace_count):
         elapsed = time.time() - self.start_time
         print("Episode %d -\tScore %.2f\tSteps: %d\tTime: %.2f sec" %
-        (index, self.episodes_scores[-1], pace_count * STEPS_IN_PACE, elapsed))
+              (index, self.episodes_scores[-1], pace_count * STEPS_IN_PACE, elapsed))
         self.start_time = time.time()
         if index % EPISODES_BETWEEN_SAVE == 0:
             self._save_tf_model(index)
@@ -200,7 +201,7 @@ class Learner(object):
             new_state = self._run_step(state, explore_action, explore_mask)
             self._post_step_update(new_state)
             if self.walker.score() < STOP_EPISODE_SCORE_THRESHOLD or \
-                np.linalg.norm(np.array(new_state) - np.array(state)) < STOP_EPISODE_STATE_THRESHOLD:
+                    np.linalg.norm(np.array(new_state) - np.array(state)) < STOP_EPISODE_STATE_THRESHOLD:
                 print('Walker is stuck, quiting')
                 return False
             state = new_state
@@ -211,7 +212,6 @@ class Learner(object):
         self.total_steps += 1
         if len(self.episode_rollout) >= STEPS_BETWEEN_DQN_TRAIN:
             self._batch_train_QN()
-
 
     def _run_step(self, state, explore_action, explore_mask):
         logging.debug("run_step %d", len(self.episodes_scores))
@@ -248,7 +248,7 @@ class Learner(object):
         # The advantage function uses "Generalized Advantage Estimation"
         self.rewards_plus = np.asarray(rewards.tolist() + [bootstrap_value])
         discounted_rewards = self._discount(self.rewards_plus, DISCOUNT)[:-1]
-        self.value_plus = np.array(values.tolist() + [bootstrap_value])[:,0,0]
+        self.value_plus = np.array(values.tolist() + [bootstrap_value])[:, 0, 0]
         advantages = rewards + DISCOUNT * self.value_plus[1:] - self.value_plus[:-1]
         feed_dict = self.mainQN.train(discounted_rewards, states, actions, advantages, self.sess)
         try:
@@ -262,7 +262,6 @@ class Learner(object):
 
             print("SUMMARY WRITING FAILED")
             traceback.print_exc()
-
 
     def _run_episode(self):
         logging.debug("run_episode")
@@ -301,9 +300,9 @@ def main():
     use_keyboard = False
     if len(sys.argv) > 1:
         is_displaying, no_explore, use_keyboard = \
-        {"show": (True, False, False),
-         "expl": (True, True, False),
-         "kbrd": (True, False, True)}[sys.argv[1]]
+            {"show": (True, False, False),
+             "expl": (True, True, False),
+             "kbrd": (True, False, True)}[sys.argv[1]]
     with Learner(is_displaying, no_explore, use_keyboard) as learner:
         if use_keyboard:
             learner.show()

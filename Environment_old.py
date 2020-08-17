@@ -11,7 +11,7 @@ PHISICAL_STEP_TIME = 0.1
 PHYSICAL_STEPS_IN_STEP = 1
 
 
-class Walker(object):
+class Environment:
     def __init__(self, is_displaying):
         self.last_score = 0
         self.app = Panda3dApp(self, is_displaying)
