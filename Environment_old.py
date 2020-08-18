@@ -7,7 +7,7 @@ import os
 from Panda3dApp import Panda3dApp
 import Shape
 
-PHISICAL_STEP_TIME = 0.1
+
 PHYSICAL_STEPS_IN_STEP = 1
 
 

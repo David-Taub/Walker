@@ -3,16 +3,17 @@ from tensorflow import keras
 from tensorflow.keras import layers
 import tensorflow as tf
 from Environment import Environment
-state_size = 4
-num_actions = 2
-num_hidden = 128
 
+
+state_size = 4
+num_actions = 4
+num_hidden = 128
 inputs = layers.Input(shape=(state_size,))
 hidden_layer = layers.Dense(num_hidden, activation="relu")(inputs)
 action_layer = layers.Dense(num_actions, activation="sigmoid")(hidden_layer)
 critic_layer = layers.Dense(1)(hidden_layer)
-
 model = keras.Model(inputs=inputs, outputs=[action_layer, critic_layer])
+
 
 optimizer = keras.optimizers.Adam(learning_rate=0.01)
 huber_loss = keras.losses.Huber()
@@ -29,8 +30,7 @@ while True:  # Run until solved
     episode_reward = 0
     with tf.GradientTape() as tape:
         for timestep in range(1, MAX_STEPS_PER_EPISODE):
-            # env.render(); Adding this line would show the attempts
-            # of the agent in a pop up window.
+            env.render()
 
             state = tf.convert_to_tensor(state)
             state = tf.expand_dims(state, 0)
