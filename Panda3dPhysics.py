@@ -1,15 +1,16 @@
 import logging
 
 import numpy as np
+
 import panda3d.bullet
 from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
 JOINT_POWER = 100
-PLANE_FRICTION = 0.001
+PLANE_FRICTION = 2
 GRAVITY_ACCELERATION = 9.81
-STEP_TIME = 0.1
+STEP_TIME = 0.2
 
 
 class Panda3dPhysics:
@@ -20,6 +21,7 @@ class Panda3dPhysics:
 
     def _create_ground(self):
         # Plane
+        logging.info("Ground plane added to physics engine")
         plane_shape = panda3d.bullet.BulletPlaneShape(Vec3(0, 0, 10), 1)
         self.ground_node = panda3d.bullet.BulletRigidBodyNode('Ground')
         self.ground_node.addShape(plane_shape)
@@ -28,7 +30,7 @@ class Panda3dPhysics:
         self.world.attachRigidBody(self.ground_node)
 
     def add_walker(self, walker):
-        logging.debug("Generating shape")
+        logging.info("adding walker to physics engine")
         # self.walker = Spider()
         # self.walker = Shape()
         self.bones_to_nodes = {}
@@ -109,7 +111,6 @@ class Panda3dPhysics:
         if action is None:
             action = np.zeros([len(self.constraints)])
         for index in range(len(self.constraints)):
-            print(action[index])
             self.constraints[index].enableAngularMotor(True, action[index] * 100, JOINT_POWER)
 
     def get_walker_position(self):

@@ -5,12 +5,14 @@ INIT_Z = 3
 MAX_IN_PART = 4
 NUM_OF_BONES = 8
 JOINT_GAP_RATIO = 1.1
+BONE_MASS = 50
+BONE_FRICTION = 1
 
 
 class Joint(object):
     def __init__(self, parent_bone, child_bone):
-        self.start_hpr = (0, 0, random.uniform(-90, 90))
-        self.angle_range = (-90, 90)
+        self.start_hpr = (0, 0, random.uniform(-60, 60))
+        self.angle_range = (-120, 120)
         self.parent_bone = parent_bone
         self.child_bone = child_bone
         self.gap_radius = max(child_bone.width, child_bone.height, parent_bone.width,
@@ -26,8 +28,8 @@ class Bone(object):
         self.height = height if height is not None else random.uniform(0.2, 0.4)
         self.start_pos = (0, index * 10, INIT_Z)
         self.start_hpr = (0, 0, 0)
-        self.friction = 0.5
-        self.mass = 5
+        self.friction = BONE_FRICTION
+        self.mass = BONE_MASS
 
 
 class Shape(object):
@@ -98,7 +100,6 @@ class Shape(object):
 
 class Worm(Shape):
     # def __init__(self):
-    #     print("Generating worm shape")
     #     self.N = 4
     #     self.lengths = [5] * self.N
     #     self.widths = [0.5] * self.N

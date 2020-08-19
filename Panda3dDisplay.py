@@ -11,10 +11,6 @@ import panda3d.core
 import panda3d.bullet
 
 
-PLANE_FRICTION = 100
-GRAVITY_ACCELERATION = 9.81
-
-
 class Panda3dDisplay(ShowBase):
     def __init__(self, physics):
         ShowBase.__init__(self)
@@ -22,9 +18,10 @@ class Panda3dDisplay(ShowBase):
         self.create_light()
         self.create_camera()
         self.create_scene_visualization()
+        logging.info('Visualization setup done')
 
     def create_camera(self):
-        taskMgr.add(self.spinCameraTask, "SpinCameraTask")
+        # taskMgr.add(self.spinCameraTask, "SpinCameraTask")
         base.cam.setPos(0, -40, 20)
         base.cam.lookAt(0, 0, 0)
         # self._add_debug()
@@ -73,7 +70,7 @@ class Panda3dDisplay(ShowBase):
             panda3d.core.Vec3(math.sin(angleRadians),
                               - math.cos(angleRadians), 0.05) * CAMERA_DISTANCE)
         # self.camera.setPos(panda3d.core.Vec3(*new_cam_pos))
-        self.camera.lookAt(self.physics.get_walker_position())
+        # self.camera.lookAt(self.physics.get_walker_position())
         # self._light_track()
         return Task.cont
 
@@ -99,8 +96,8 @@ class Panda3dDisplay(ShowBase):
         self.ground_np = render.attachNewNode(self.ground_node)
         self.ground_np.lookAt(0, 0, -10)
         self.ground_np.setPos(panda3d.core.Vec3(0, 0, 0))
-        # self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
-        self.ground_np.setColor(0.7, 0.1, 0.1, 1.0)
+        self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
+        # self.ground_np.setColor(0.7, 0.1, 0.1, 1.0)
 
     def visualize_bone(self, bone, bone_node):
         bone_display_node = render.attachNewNode(bone_node)

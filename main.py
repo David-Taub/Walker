@@ -1,9 +1,38 @@
+import logging
+import time
+
+import keyboard
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
 import tensorflow.keras.backend as K
 import tensorflow as tf
+
 from Environment import Environment
+
+np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+
+def apply_keyboard_input(action):
+    for i in range(min(len(action), 9)):
+        if keyboard.is_pressed(str(i)):
+            logging.debug('keyboard input detected')
+            if keyboard.is_pressed('up arrow'):
+                action[i] = 1
+            if keyboard.is_pressed('down arrow'):
+                action[i] = -1
+    return action
+
+
+def tic():
+    global t
+    t = time.time()
+
+
+def toc(s):
+    logging.debug('{0} time: {1:0.2f}'.format(s, time.time() - t))
+
 
 env = Environment()
 
@@ -24,15 +53,19 @@ critic_value_history = []
 rewards_history = []
 running_reward = 0
 episode_count = 0
-MAX_STEPS_PER_EPISODE = 300
+MAX_STEPS_PER_EPISODE = 1000
+MAX_EPISODES = 1000000
+EPISODES_INTERVAL_TO_RENDER = 1
 GAMMA = 0.5
-while True:  # Run until solved
+for episode_index in range(MAX_EPISODES):
     state = env.reset()
     episode_reward = 0
     with tf.GradientTape() as tape:
         for timestep in range(1, MAX_STEPS_PER_EPISODE):
-            env.render()
-
+            if episode_index % EPISODES_INTERVAL_TO_RENDER == 0:
+                tic()
+                env.render()
+                toc('render')
             state = tf.convert_to_tensor(state)
             state = tf.expand_dims(state, 0)
 
@@ -40,16 +73,20 @@ while True:  # Run until solved
             # from environment state
             action, critic_value = model(state)
             critic_value_history.append(critic_value[0, 0])
+            action_vec = K.eval(action)[0]
+            action_vec = apply_keyboard_input(action_vec)
 
             # Sample action from action probability distribution
             action_history.append(action)
 
             # Apply the sampled action in our environment
-            state, reward, done, _ = env.step(K.eval(action)[0])
+            tic()
+            state, reward, done, _ = env.step(action_vec)
+            toc('step')
             rewards_history.append(reward)
             episode_reward += reward
 
-            if done and timestep > 10:
+            if done:
                 break
 
         # Update running reward to check condition for solving
@@ -90,7 +127,7 @@ while True:  # Run until solved
             )
 
         # Backpropagation
-        print('train')
+        logging.info('train')
         loss_value = sum(actor_losses) + sum(critic_losses)
         grads = tape.gradient(loss_value, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -104,8 +141,8 @@ while True:  # Run until solved
     episode_count += 1
     if episode_count % 10 == 0:
         template = "running reward: {:.2f} at episode {}"
-        print(template.format(running_reward, episode_count))
+        logging.info(template.format(running_reward, episode_count))
 
     if running_reward > 195:  # Condition to consider the task solved
-        print("Solved at episode {}!".format(episode_count))
+        logging.info("Solved at episode {}!".format(episode_count))
         break
