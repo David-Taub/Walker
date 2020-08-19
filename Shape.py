@@ -1,12 +1,10 @@
 import random
-import numpy as np
 
-INIT_Z = 3
-MAX_IN_PART = 4
-NUM_OF_BONES = 8
+INIT_Z = 1
 JOINT_GAP_RATIO = 1.1
-BONE_MASS = 50
-BONE_FRICTION = 1
+BONE_MASS = 1
+BONE_FRICTION = 2
+BONES_COUNT = 5
 
 
 class Joint(object):
@@ -33,10 +31,9 @@ class Bone(object):
 
 
 class Shape(object):
-    BONES_COUNT = 4
 
     def __init__(self):
-        self.bones = self._gen_bones(self.BONES_COUNT)
+        self.bones = self._gen_bones(BONES_COUNT)
         self.joints = self._gen_joints()
 
     def _gen_bones(self, amount):

@@ -30,13 +30,13 @@ class Environment:
     def render(self):
         if self.display is None:
             self.display = Panda3dDisplay(self.physics)
-        self.display.render2()
+        self.display.render_scene()
 
     def _wait_for_stability(self):
         logging.info('Waiting for walker to be stale')
         for i in range(MAX_STABILITY_STEPS):
             _, reward, _, _ = self.step()
-            self.render()
+            # self.render()
             if np.abs(reward) < MIN_MOVEMENT_FOR_STABILITY and i > 10:
                 logging.info('Walker is stable')
                 break

@@ -12,6 +12,7 @@ from Environment import Environment
 
 np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+tf.enable_eager_execution()
 
 
 def apply_keyboard_input(action):
@@ -45,7 +46,6 @@ action_layer = layers.Dense(num_actions, activation="sigmoid")(hidden_layer)
 critic_layer = layers.Dense(1)(hidden_layer)
 model = keras.Model(inputs=inputs, outputs=[action_layer, critic_layer])
 
-
 optimizer = keras.optimizers.Adam(learning_rate=0.01)
 huber_loss = keras.losses.Huber()
 action_history = []
@@ -57,6 +57,7 @@ MAX_STEPS_PER_EPISODE = 1000
 MAX_EPISODES = 1000000
 EPISODES_INTERVAL_TO_RENDER = 1
 GAMMA = 0.5
+
 for episode_index in range(MAX_EPISODES):
     state = env.reset()
     episode_reward = 0
@@ -64,20 +65,27 @@ for episode_index in range(MAX_EPISODES):
         for timestep in range(1, MAX_STEPS_PER_EPISODE):
             if episode_index % EPISODES_INTERVAL_TO_RENDER == 0:
                 tic()
-                env.render()
+                # env.render()
                 toc('render')
+            tic()
             state = tf.convert_to_tensor(state)
             state = tf.expand_dims(state, 0)
 
             # Predict action probabilities and estimated future rewards
             # from environment state
             action, critic_value = model(state)
+            toc('model')
+            tic()
             critic_value_history.append(critic_value[0, 0])
-            action_vec = K.eval(action)[0]
+            # TODO: eval makes the model slower ans slower. should use eager mode indsta
+            # action_vec = K.eval(action)[0]
+            action_vec = action.numpy()[0]
+            # for debugging, keyboard input can affect the action
             action_vec = apply_keyboard_input(action_vec)
 
             # Sample action from action probability distribution
             action_history.append(action)
+            toc('action')
 
             # Apply the sampled action in our environment
             tic()

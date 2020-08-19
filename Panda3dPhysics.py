@@ -7,7 +7,7 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 100
+JOINT_POWER = 5
 PLANE_FRICTION = 2
 GRAVITY_ACCELERATION = 9.81
 STEP_TIME = 0.2
