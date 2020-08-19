@@ -1,12 +1,14 @@
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
+import tensorflow.keras.backend as K
 import tensorflow as tf
 from Environment import Environment
 
+env = Environment()
 
-state_size = 4
-num_actions = 4
+state_size = len(env.get_current_state())
+num_actions = env.joints_count
 num_hidden = 128
 inputs = layers.Input(shape=(state_size,))
 hidden_layer = layers.Dense(num_hidden, activation="relu")(inputs)
@@ -22,9 +24,8 @@ critic_value_history = []
 rewards_history = []
 running_reward = 0
 episode_count = 0
-MAX_STEPS_PER_EPISODE = 100
+MAX_STEPS_PER_EPISODE = 300
 GAMMA = 0.5
-env = Environment()
 while True:  # Run until solved
     state = env.reset()
     episode_reward = 0
@@ -44,11 +45,11 @@ while True:  # Run until solved
             action_history.append(action)
 
             # Apply the sampled action in our environment
-            state, reward, done, _ = env.step(action)
+            state, reward, done, _ = env.step(K.eval(action)[0])
             rewards_history.append(reward)
             episode_reward += reward
 
-            if done:
+            if done and timestep > 10:
                 break
 
         # Update running reward to check condition for solving
@@ -66,7 +67,7 @@ while True:  # Run until solved
 
         # Normalize
         returns = np.array(returns)
-        returns = (returns - np.mean(returns)) / (np.std(returns) + np.eps)
+        returns = (returns - np.mean(returns)) / (np.std(returns) + np.finfo(float).eps)
         returns = returns.tolist()
 
         # Calculating loss values to update our network
@@ -89,6 +90,7 @@ while True:  # Run until solved
             )
 
         # Backpropagation
+        print('train')
         loss_value = sum(actor_losses) + sum(critic_losses)
         grads = tape.gradient(loss_value, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))

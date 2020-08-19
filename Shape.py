@@ -9,7 +9,7 @@ JOINT_GAP_RATIO = 1.1
 
 class Joint(object):
     def __init__(self, parent_bone, child_bone):
-        self.start_hpr = (0, 0, 0)
+        self.start_hpr = (0, 0, random.uniform(-90, 90))
         self.angle_range = (-90, 90)
         self.parent_bone = parent_bone
         self.child_bone = child_bone
@@ -26,8 +26,8 @@ class Bone(object):
         self.height = height if height is not None else random.uniform(0.2, 0.4)
         self.start_pos = (0, index * 10, INIT_Z)
         self.start_hpr = (0, 0, 0)
-        self.friction = 3
-        self.mass = 1
+        self.friction = 0.5
+        self.mass = 5
 
 
 class Shape(object):
