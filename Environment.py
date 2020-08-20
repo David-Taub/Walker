@@ -11,7 +11,7 @@ MIN_MOVEMENT_FOR_STABILITY = 0.0001
 MIN_MOVEMENT_FOR_END_EPISODE = 0.001
 PHYSICAL_STEPS_PER_ACTION = 10
 MAX_SCORE = 100
-STUCK_PENALTY = -100
+STUCK_PENALTY = -1
 
 
 class Environment:
@@ -19,19 +19,21 @@ class Environment:
         self.display = None
         self.physics = Panda3dPhysics()
         walker = Shape.Worm()
-        self.bone_count = len(walker.bones)
-        self.joints_count = len(walker.joints)
         self.physics.add_walker(walker)
         self._wait_for_stability()
         self.init_state = self.get_current_state()
-        self.reset()
+        self.state_size = len(self.init_state)
+        self.action_size = len(self.physics.constraints)
         self.init_position = self.physics.get_walker_position()
+        self.init_bones_positions = self.physics.get_bones_relative_positions()
+        self.init_bones_orientations = self.physics.get_bones_orientations()
+        self.reset()
 
     def reset(self):
         logging.debug('resetting')
-        postions = self.init_state[: self.bone_count * 3].reshape([-1, 3])
+        postions = self.init_bones_positions
         postions[:, 2] -= np.min(postions[:, 2])
-        orientations = self.init_state[self.bone_count * 3: self.bone_count * 6].reshape([-1, 3])
+        orientations = self.init_bones_orientations
         self.physics.set_bones_pos_hpr(postions, orientations)
         return self.init_state
 
@@ -52,6 +54,7 @@ class Environment:
                 break
 
     def get_current_state(self):
+        # return self.physics.get_joint_angles()
         return np.hstack((self.physics.get_bones_relative_positions().flatten(),
                           self.physics.get_bones_orientations().flatten(),
                           self.physics.get_joint_angles()))
