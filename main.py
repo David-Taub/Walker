@@ -111,8 +111,8 @@ for episode_index in range(MAX_EPISODES):
                 tic()
                 env.render()
                 env.display.debug_screen_print('\n'.join((
-                    "Episode: {}".format(episode_index),
-                    'Score: {:0.1f}'.format(env.get_score()),
+                    "Episode: {} [{}]".format(episode_index, timestep),
+                    'Total Reward: {:0.1f}'.format(episode_reward),
                     'Explore: {:0.2f}'.format(explore_rate),
                     'Action: ' + ', '.join(['{:+0.1f}'.format(i) for i in action_vec]),
                     # 'State: ' + ', '.join(['{:0.1f}'.format(i) for i in state]),
