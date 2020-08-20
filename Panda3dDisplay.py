@@ -12,9 +12,15 @@ import panda3d.bullet
 
 
 class Panda3dDisplay(ShowBase):
+    """
+    responsible for the visual side of the scene:
+    ground, bones boxes, light and camera
+    """
+
     def __init__(self, physics):
         ShowBase.__init__(self)
         self.physics = physics
+        self.font = loader.loadFont('courier_new_bold.ttf')
         self.create_light()
         self.visualize_ground()
         for bone in self.physics.bones_to_nodes:
@@ -23,26 +29,21 @@ class Panda3dDisplay(ShowBase):
         render.setShaderAuto()
         taskMgr.add(self.reposition_camera, "reposition_camera")
         taskMgr.add(self.reposition_light, "_reposition_light")
-        logging.info('Visualization setup done')
+        logging.debug('Visualization setup done')
 
     def reposition_camera(self, task):
-        camera_offset = panda3d.core.Vec3(20, 20, 20)
+        camera_offset = panda3d.core.Vec3(30, 30, 30)
         self.camera.setPos(self.physics.get_walker_position() + camera_offset)
         self.camera.lookAt(self.physics.get_walker_position())
         return Task.cont
 
     def reposition_light(self, task):
-        light_offset = panda3d.core.Vec3(10, 30, 30)
+        light_offset = panda3d.core.Vec3(0, 0, 100)
         self.tracker_light_np.setPos(self.physics.get_walker_position() + light_offset)
         self.tracker_light_np.lookAt(self.physics.get_walker_position())
         return Task.cont
 
-    # def create_camera(self):
-    #     base.cam.setPos(0, 0, 0)
-    #     base.cam.lookAt(0, 0, 0)
-        # self._add_debug()
-
-    def _add_debug(self):
+    def show_debug_frames(self):
         debug_node = panda3d.bullet.BulletDebugNode('Debug')
         debug_node.showWireframe(True)
         debug_node.showConstraints(True)
@@ -65,7 +66,7 @@ class Panda3dDisplay(ShowBase):
             self.tracker_light_np.setPos(0, 50, 30)
             self.tracker_light_np.lookAt(0, 0, 0)
             self.tracker_light_np.node().setShadowCaster(True, 2048, 2048)
-            self.tracker_light_np.node().getLens().setFov(90)
+            self.tracker_light_np.node().getLens().setFov(170)
             render.setLight(self.tracker_light_np)
 
         def create_fixed_spotlight():
@@ -80,15 +81,16 @@ class Panda3dDisplay(ShowBase):
         create_tracking_spotlight()
         # create_fixed_spotlight()
 
-    # def debug_screen_print(self, action, state, reward, score):
-    #     try:
-    #         self.textObject.destroy()
-    #     except:
-    #         pass
+    def debug_screen_print(self, text):
+        try:
+            self.textObject.destroy()
+        except Exception:
+            pass
 
-    #     text = "Score: %.2f Actions: %s, Reward: %.2f" % (score, [int(a) for a in action], reward)
-    #     self.textObject = OnscreenText(text=text, pos=(0.1, 0.1), scale=0.07, align=TextNode.ALeft)
-    #     self.textObject.reparentTo(base.a2dBottomLeft)
+        self.textObject = OnscreenText(text=text, pos=(0.1, 0.1 * text.count('\n')), scale=0.07,
+                                       align=panda3d.core.TextNode.ALeft, fg=(1.0, 1.0, 1.0, 1.0),
+                                       bg=(0.0, 0.0, 0.0, 0.5), font=self.font)
+        self.textObject.reparentTo(base.a2dBottomLeft)
 
     def visualize_ground(self):
         card_maker = panda3d.core.CardMaker('')

@@ -7,10 +7,10 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 5
+JOINT_POWER = 1
 PLANE_FRICTION = 2
 GRAVITY_ACCELERATION = 9.81
-STEP_TIME = 0.2
+STEP_TIME = 50
 
 
 class Panda3dPhysics:
@@ -21,7 +21,7 @@ class Panda3dPhysics:
 
     def _create_ground(self):
         # Plane
-        logging.info("Ground plane added to physics engine")
+        logging.debug("Ground plane added to physics engine")
         plane_shape = panda3d.bullet.BulletPlaneShape(Vec3(0, 0, 10), 1)
         self.ground_node = panda3d.bullet.BulletRigidBodyNode('Ground')
         self.ground_node.addShape(plane_shape)
@@ -30,7 +30,7 @@ class Panda3dPhysics:
         self.world.attachRigidBody(self.ground_node)
 
     def add_walker(self, walker):
-        logging.info("adding walker to physics engine")
+        logging.debug("adding walker to physics engine")
         # self.walker = Spider()
         # self.walker = Shape()
         self.bones_to_nodes = {}
@@ -101,9 +101,6 @@ class Panda3dPhysics:
     def get_joint_angles(self):
         return np.array([constraint.getHingeAngle() for constraint in self.constraints])
 
-    def set_joint_angles(self):
-        return np.array([constraint.setHingeAngle() for constraint in self.constraints])
-
     # def get_bones_z(self):
     #     return [node.getTransform().getPos()[2] for node in self.bones_to_nodes]
 
@@ -114,9 +111,10 @@ class Panda3dPhysics:
             self.constraints[index].enableAngularMotor(True, action[index] * 100, JOINT_POWER)
 
     def get_walker_position(self):
-        # return np.mean([bone_node.getTransform().getPos() for bone_node in self.bones_to_nodes.values()])
-        bone_node = list(self.bones_to_nodes.values())[0]
-        return bone_node.getTransform().getPos()
+        return sum([bone_node.getTransform().getPos() for bone_node in self.bones_to_nodes.values()],
+                   Vec3(0, 0, 0)) / len(self.bones_to_nodes)
+        # bone_node = list(self.bones_to_nodes.values())[0]
+        # return bone_node.getTransform().getPos()
 
     def step(self):
         self.world.doPhysics(STEP_TIME)

@@ -1,3 +1,4 @@
+import random
 import logging
 import time
 
@@ -5,13 +6,13 @@ import keyboard
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
-import tensorflow.keras.backend as K
+# import tensorflow.keras.backend as K
 import tensorflow as tf
 
 from Environment import Environment
 
 np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 tf.enable_eager_execution()
 
 
@@ -23,6 +24,8 @@ def apply_keyboard_input(action):
                 action[i] = 1
             if keyboard.is_pressed('down arrow'):
                 action[i] = -1
+    if keyboard.is_pressed('q'):
+        raise Exception('Keyboard Quit')
     return action
 
 
@@ -38,11 +41,12 @@ def toc(s):
 env = Environment()
 
 state_size = len(env.get_current_state())
-num_actions = env.joints_count
-num_hidden = 128
+action_size = env.joints_count
+hidden_layer_size = 128
 inputs = layers.Input(shape=(state_size,))
-hidden_layer = layers.Dense(num_hidden, activation="relu")(inputs)
-action_layer = layers.Dense(num_actions, activation="sigmoid")(hidden_layer)
+hidden_layer = layers.Dense(hidden_layer_size, activation="relu")(inputs)
+hidden_layer = layers.Dense(hidden_layer_size // 2, activation="relu")(inputs)
+action_layer = layers.Dense(action_size, activation="tanh")(hidden_layer)
 critic_layer = layers.Dense(1)(hidden_layer)
 model = keras.Model(inputs=inputs, outputs=[action_layer, critic_layer])
 
@@ -56,17 +60,22 @@ episode_count = 0
 MAX_STEPS_PER_EPISODE = 1000
 MAX_EPISODES = 1000000
 EPISODES_INTERVAL_TO_RENDER = 1
-GAMMA = 0.5
+GAMMA = 0.95
+START_EXPLORE_RATE = 0.50
+EXPLORE_RATE_DECAY = 0.99
+explore_rate = START_EXPLORE_RATE
+
+
+def apply_random_action(action_size):
+    return np.random.uniform(low=-1, high=1, size=(action_size,))
+
 
 for episode_index in range(MAX_EPISODES):
     state = env.reset()
     episode_reward = 0
+    explore_rate = explore_rate * EXPLORE_RATE_DECAY
     with tf.GradientTape() as tape:
         for timestep in range(1, MAX_STEPS_PER_EPISODE):
-            if episode_index % EPISODES_INTERVAL_TO_RENDER == 0:
-                tic()
-                # env.render()
-                toc('render')
             tic()
             state = tf.convert_to_tensor(state)
             state = tf.expand_dims(state, 0)
@@ -74,11 +83,15 @@ for episode_index in range(MAX_EPISODES):
             # Predict action probabilities and estimated future rewards
             # from environment state
             action, critic_value = model(state)
+            if random.random() < explore_rate:
+                action = apply_random_action(action_size)
+                action = tf.convert_to_tensor(action, dtype=tf.float32)
+                action = tf.expand_dims(action, 0)
+                # action = K.cast(action, double)
+
             toc('model')
             tic()
             critic_value_history.append(critic_value[0, 0])
-            # TODO: eval makes the model slower ans slower. should use eager mode indsta
-            # action_vec = K.eval(action)[0]
             action_vec = action.numpy()[0]
             # for debugging, keyboard input can affect the action
             action_vec = apply_keyboard_input(action_vec)
@@ -94,7 +107,20 @@ for episode_index in range(MAX_EPISODES):
             rewards_history.append(reward)
             episode_reward += reward
 
-            if done:
+            if episode_index % EPISODES_INTERVAL_TO_RENDER == 0:
+                tic()
+                env.render()
+                env.display.debug_screen_print('\n'.join((
+                    "Episode: {}".format(episode_index),
+                    'Score: {:0.1f}'.format(env.get_score()),
+                    'Explore: {:0.2f}'.format(explore_rate),
+                    'Action: ' + ', '.join(['{:+0.1f}'.format(i) for i in action_vec]),
+                    # 'State: ' + ', '.join(['{:0.1f}'.format(i) for i in state]),
+                )))
+                # env.display.debug_screen_print('Episode: {}\nScore: {:0.2f}'.format(episode_index, env.get_score()))
+                toc('render')
+
+            if done and timestep > 100:
                 break
 
         # Update running reward to check condition for solving
@@ -135,7 +161,7 @@ for episode_index in range(MAX_EPISODES):
             )
 
         # Backpropagation
-        logging.info('train')
+        logging.info('train {}'.format(episode_index))
         loss_value = sum(actor_losses) + sum(critic_losses)
         grads = tape.gradient(loss_value, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -151,6 +177,6 @@ for episode_index in range(MAX_EPISODES):
         template = "running reward: {:.2f} at episode {}"
         logging.info(template.format(running_reward, episode_count))
 
-    if running_reward > 195:  # Condition to consider the task solved
+    if running_reward > 900:  # Condition to consider the task solved
         logging.info("Solved at episode {}!".format(episode_count))
         break
