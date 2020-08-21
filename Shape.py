@@ -1,16 +1,15 @@
 import random
 
 INIT_Z = .5
-JOINT_GAP_RATIO = 1.1
 BONE_MASS = 1
-BONE_FRICTION = 2
-BONES_COUNT = 5
+BONE_FRICTION = 1
+BONES_COUNT = 6
 
 
 class Joint(object):
     def __init__(self, parent_bone, child_bone):
         self.start_hpr = (0, 0, 0)
-        self.angle_range = (-160, 160)
+        self.angle_range = (-120, 120)
         self.parent_bone = parent_bone
         self.child_bone = child_bone
         self.gap_radius = parent_bone.height

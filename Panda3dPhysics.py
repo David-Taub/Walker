@@ -7,10 +7,11 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 1
-PLANE_FRICTION = 2
+JOINT_POWER = 20
+JOINT_SPEED = 0.75
+PLANE_FRICTION = 1
 GRAVITY_ACCELERATION = 9.81
-STEP_TIME = 50
+STEP_TIME = 1
 
 
 class Panda3dPhysics:
@@ -74,11 +75,19 @@ class Panda3dPhysics:
     def get_bones_orientations(self):
         return np.array([node.getTransform().getHpr() for node in self._get_ordered_bone_nodes()])
 
+    def get_bones_linear_velocity(self):
+        return np.array([node.getLinearVelocity() for node in self._get_ordered_bone_nodes()])
+
+    def get_bones_angular_velocity(self):
+        return np.array([node.getAngularVelocity() for node in self._get_ordered_bone_nodes()])
+
     def set_bones_pos_hpr(self, positions, orientations):
         # position - n x 3 array
         for index, node in enumerate(self._get_ordered_bone_nodes()):
             transform = TransformState.makePosHpr(Vec3(*positions[index]), Vec3(*orientations[index]))
             node.setTransform(transform)
+            node.setLinearVelocity(Vec3(0, 0, 0))
+            node.setAngularVelocity(Vec3(0, 0, 0))
 
     def _get_ordered_bone_nodes(self):
         bones = list(self.bones_to_nodes.keys())
@@ -108,7 +117,7 @@ class Panda3dPhysics:
         if action is None:
             action = np.zeros([len(self.constraints)])
         for index in range(len(self.constraints)):
-            self.constraints[index].enableAngularMotor(True, action[index] * 100, JOINT_POWER)
+            self.constraints[index].enableAngularMotor(True, action[index] * JOINT_SPEED, JOINT_POWER)
 
     def get_walker_position(self):
         return sum([bone_node.getTransform().getPos() for bone_node in self.bones_to_nodes.values()],
