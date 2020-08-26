@@ -5,22 +5,25 @@ from Panda3dPhysics import Panda3dPhysics
 from Panda3dDisplay import Panda3dDisplay
 
 import numpy as np
+import time
 
 MAX_STABILITY_STEPS = 500
 MIN_MOVEMENT_FOR_STABILITY = 0.0001
-MIN_MOVEMENT_FOR_END_EPISODE = 0.001
+MIN_MOVEMENT_FOR_END_EPISODE = 0.0001
 PHYSICAL_STEPS_PER_ACTION = 5
-MAX_SCORE = 50
-MIN_SCORE = -2
-STUCK_PENALTY = -0.2
-MIN_SCORE_PENALTY = -30
+STUCK_PENALTY = -1
+TIME_STEP_REWARD = 0.1
+LAST_VELOCITY_HISTORY_SIZE = 50
+LAST_VELOCITY_AVERAGE_INIT = 1
+MIN_LAST_VELOCITY_AVERAGE = 0.5
+ACTUATOR_PENALTY = 0.1
+VELOCITY_REWARD = 5
 
 
 class Environment:
-    def __init__(self):
+    def __init__(self, walker):
         self.display = None
         self.physics = Panda3dPhysics()
-        walker = Shape.Worm()
         self.physics.add_walker(walker)
         self._wait_for_stability()
         self.init_state = self.get_current_state()
@@ -36,6 +39,7 @@ class Environment:
         positions[:, 2] -= np.min(positions[:, 2])
         orientations = self.init_bones_orientations
         self.physics.set_bones_pos_hpr(positions, orientations)
+        self.last_velocity = [LAST_VELOCITY_AVERAGE_INIT] * LAST_VELOCITY_HISTORY_SIZE
         return self.get_current_state()
 
     def render(self):
@@ -50,39 +54,56 @@ class Environment:
             self.physics.step()
             movement = LA.norm(last_pos - self.physics.get_walker_position())
             self.render()
+            # time.sleep(1.5)
             if np.abs(movement) < MIN_MOVEMENT_FOR_STABILITY and i > 10:
                 logging.debug('Walker is stable')
                 break
 
     def get_current_state(self):
-        # return self.physics.get_joint_angles()
+        # logging.info(
+        #     'get_bones_relative_positions: ' + str(self.physics.get_bones_relative_positions().flatten()) + '\n' +
+        #     'get_bones_linear_velocity: ' + str(self.physics.get_bones_linear_velocity().flatten()) + '\n' +
+        #     'get_bones_orientations: ' + str(self.physics.get_bones_orientations().flatten() / 180) + '\n' +
+        #     'get_bones_angular_velocity: ' + str(self.physics.get_bones_angular_velocity().flatten() / 180) + '\n' +
+        #     'get_joint_angles: ' + str(self.physics.get_joint_angles() / 180) + '\n' +
+        #     'get_joint_angles_diff: ' + str(self.physics.get_joint_angles_diff()) + '\n' +
+        #     'get_bones_ground_contacts: ' + str(self.physics.get_bones_ground_contacts()) + '\n' +
+        #     'prev_action: ' + str(self.physics.prev_action) + '\n')
+
         return np.hstack((self.physics.get_bones_relative_positions().flatten(),
                           self.physics.get_bones_linear_velocity().flatten(),
                           self.physics.get_bones_orientations().flatten() / 180,
                           self.physics.get_bones_angular_velocity().flatten() / 180,
                           self.physics.get_joint_angles() / 180,
+                          self.physics.get_joint_angles_diff() / 180,
+                          self.physics.get_bones_ground_contacts(),
+                          self.physics.prev_action
                           ))
 
     def get_score(self):
         return self.physics.get_walker_position()[0]
 
+    def get_walker_x_velocity(self):
+        return np.mean([velocity[0] for velocity in self.physics.get_bones_linear_velocity()])
+
+    def update_last_velocity_average(self):
+        self.last_velocity.pop(0)
+        self.last_velocity.append(self.get_walker_x_velocity())
+        return np.mean(self.last_velocity)
+
     def step(self, action=None):
-        state = self.get_current_state()
-        previous_walker_position = self.physics.get_walker_position()
+        assert not np.isnan(np.sum(action))
         self.physics.apply_action(action)
         for i in range(PHYSICAL_STEPS_PER_ACTION):
             self.physics.step()
-        walker_position = self.physics.get_walker_position()
-        is_stuck = LA.norm((walker_position - previous_walker_position)) < MIN_MOVEMENT_FOR_END_EPISODE
-        max_score_achieved = self.get_score() > MAX_SCORE
-        min_score_achieved = self.get_score() < MIN_SCORE
-        done = min_score_achieved or max_score_achieved or is_stuck
-        # reward = LA.norm((walker_position - previous_walker_position))
-        reward = (walker_position - previous_walker_position)[0] - 0.01
-        if is_stuck:
-            reward = STUCK_PENALTY
-        if min_score_achieved:
-            reward = MIN_SCORE_PENALTY
+        state = self.get_current_state()
+        assert not np.isnan(np.sum(state))
+        # done episode if walker is stuck, low average velocity
+        done = self.update_last_velocity_average() < MIN_MOVEMENT_FOR_END_EPISODE
+        reward = VELOCITY_REWARD * self.get_walker_x_velocity()
+        reward += TIME_STEP_REWARD
+        if action is not None:
+            reward -= ACTUATOR_PENALTY * np.mean(action ** 2)
         info = None
         # logging.info('Step - Action: {}\n State: {}\n Reward: {:,.2f}\n Done: {}\n Info: {}\n'.format(
         # action, state, reward, done, info))

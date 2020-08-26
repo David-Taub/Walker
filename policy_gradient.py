@@ -6,14 +6,15 @@ import matplotlib.pyplot as plt
 
 from tensorflow.keras import layers
 
-GAMMA = 0.5
-TAU = 0.05
+GAMMA = 0.50
+# TAU = 0.05
 UPPER_BOUND = 1
 LOWER_BOUND = -1
+ACTION_REGULARIZATION = 0
 
 
 class OUActionNoise:
-    def __init__(self, mean, std_deviation, theta=0.15, dt=1e-2, x_initial=None):
+    def __init__(self, mean, std_deviation, theta=0.5, dt=1e-2, x_initial=None):
         self.theta = theta
         self.mean = mean
         self.std_dev = std_deviation
@@ -23,8 +24,10 @@ class OUActionNoise:
 
     def __call__(self):
         # Formula taken from https://www.wikipedia.org/wiki/Ornstein-Uhlenbeck_process.
-        x = (self.x_prev + self.theta * (self.mean - self.x_prev) * self.dt + (
-            self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)))
+        # x = (self.x_prev + self.theta * (self.mean - self.x_prev) * self.dt + (
+        #     self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)))
+        x = self.x_prev + self.theta * (self.mean - self.x_prev) * self.dt + \
+            self.std_dev * self.dt * np.random.normal(size=self.mean.shape)
         # Store x into x_prev
         # Makes next noise dependent on current one
         self.x_prev = x
@@ -35,6 +38,30 @@ class OUActionNoise:
             self.x_prev = self.x_initial
         else:
             self.x_prev = np.zeros_like(self.mean)
+
+
+class MarkovSaltPepperNoise:
+    def __init__(self, shape, salt_to_pepper=0.02, pepper_to_salt=0.1):
+        self.salt_to_pepper = salt_to_pepper
+        self.pepper_to_salt = pepper_to_salt
+        self.noise = np.ones(shape)
+
+    def _reward_to_probabilty(self, reward):
+        MAX_PROB = 0.04
+        MIN_PROB = 0.001
+        MIN_REWARD = 0
+        MAX_REWARD = 5
+        reward = min(MAX_REWARD, max(reward, MIN_REWARD))
+        reward_streched = (reward - MIN_REWARD) / (MAX_REWARD - MIN_REWARD)
+        return MIN_PROB + (1 - reward_streched) * (MAX_PROB - MIN_PROB)
+
+    def __call__(self, reward):
+        self.salt_to_pepper = self._reward_to_probabilty(reward)
+        switch_salt_to_pepper = np.random.binomial(1, self.salt_to_pepper, self.noise.shape)
+        switch_pepper_to_salt = np.random.binomial(1, self.pepper_to_salt, self.noise.shape)
+        self.noise[(self.noise == 1) & (switch_salt_to_pepper == 1)] = -1
+        self.noise[(self.noise == -1) & (switch_pepper_to_salt == 1)] = 1
+        return self.noise
 
 
 class Buffer:
@@ -76,7 +103,10 @@ class Buffer:
         # Get sampling range
         record_range = min(self.buffer_counter, self.buffer_capacity)
         # Randomly sample indices
-        batch_indices = np.random.choice(record_range, self.batch_size)
+        pick_probability = self.reward_buffer[0:record_range] - np.min(self.reward_buffer[0:record_range]) \
+            + np.finfo(float).eps
+        pick_probability /= np.sum(pick_probability)
+        batch_indices = np.random.choice(record_range, self.batch_size, p=pick_probability.reshape(-1))
 
         # Convert to tensors
         state_batch = tf.convert_to_tensor(self.state_buffer[batch_indices])
@@ -90,12 +120,20 @@ class Buffer:
         with tf.GradientTape() as tape:
             # target_actions = target_actor(next_state_batch)
             target_actions = actor_model(next_state_batch)
+            if np.isnan(np.sum(target_actions.numpy())):
+                return
             # y = reward_batch + GAMMA * target_critic([next_state_batch, target_actions])
             y = reward_batch + GAMMA * critic_model([next_state_batch, target_actions])
             critic_value = critic_model([state_batch, action_batch])
             critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
-
         critic_grad = tape.gradient(critic_loss, critic_model.trainable_variables)
+        assert not np.isnan(np.sum(action_batch.numpy()))
+        assert not np.isnan(np.sum(state_batch.numpy()))
+        assert not np.isnan(np.sum(next_state_batch.numpy()))
+        assert not np.isnan(np.sum(reward_batch.numpy()))
+        assert not np.isnan(np.sum(target_actions.numpy()))
+        assert not np.isnan(np.sum(critic_value.numpy()))
+        assert not np.isnan(np.sum(critic_loss.numpy()))
 
         critic_optimizer.apply_gradients(
             zip(critic_grad, critic_model.trainable_variables)
@@ -139,15 +177,56 @@ def get_actor(state_size, action_size):
     # last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 
     inputs = layers.Input(shape=(state_size,))
-    out = layers.Dense(32, activation="relu")(inputs)
+    out = layers.Dense(128, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(inputs)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(16, activation="relu")(out)
+    out = layers.Dense(64, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(inputs)
     out = layers.BatchNormalization()(out)
+    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.BatchNormalization()(out)
+    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.BatchNormalization()(out)
+    out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.BatchNormalization()(out)
+    # outputs = layers.Dense(action_size, kernel_regularizer='l2', bias_regularizer='l2')(out)
+    outputs = layers.Dense(action_size, activation="tanh", kernel_regularizer='l2', bias_regularizer='l2')(out)
     # outputs = layers.Dense(1, activation="tanh", kernel_initializer=last_init)(out)
-    outputs = layers.Dense(action_size, activation="tanh")(out)
+    # outputs = layers.Dense(action_size, activation="tanh", activity_regularizer='l2')(out)
 
     # outputs = outputs * UPPER_BOUND
     model = tf.keras.Model(inputs, outputs)
+    return model
+
+
+def get_critic(state_size, action_size):
+    # State as input
+    state_input = layers.Input(shape=(state_size))
+    state_out = layers.Dense(128, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_input)
+    state_out = layers.BatchNormalization()(state_out)
+    state_out = layers.Dense(64, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_input)
+    state_out = layers.BatchNormalization()(state_out)
+    state_out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_out)
+    state_out = layers.BatchNormalization()(state_out)
+
+    # Action as input
+    action_input = layers.Input(shape=(action_size))
+    action_out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.BatchNormalization()(action_out)
+    action_out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.BatchNormalization()(action_out)
+    action_out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.BatchNormalization()(action_out)
+    # Both are passed through seperate layer before concatenating
+    concat = layers.Concatenate()([state_out, action_out])
+
+    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(concat)
+    out = layers.BatchNormalization()(out)
+    out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.BatchNormalization()(out)
+    outputs = layers.Dense(1)(out)
+
+    # Outputs single value for give state-action
+    model = tf.keras.Model([state_input, action_input], outputs)
+
     return model
 
 
@@ -164,42 +243,34 @@ def apply_keyboard_input(action):
     return action
 
 
-def get_critic(state_size, action_size):
-    # State as input
-    state_input = layers.Input(shape=(state_size))
-    state_out = layers.Dense(64, activation="relu")(state_input)
-    state_out = layers.BatchNormalization()(state_out)
-    state_out = layers.Dense(32, activation="relu")(state_out)
-    state_out = layers.BatchNormalization()(state_out)
-
-    # Action as input
-    action_input = layers.Input(shape=(action_size))
-    action_out = layers.Dense(24, activation="relu")(action_input)
-    action_out = layers.BatchNormalization()(action_out)
-
-    # Both are passed through seperate layer before concatenating
-    concat = layers.Concatenate()([state_out, action_out])
-
-    out = layers.Dense(32, activation="relu")(concat)
-    out = layers.BatchNormalization()(out)
-    out = layers.Dense(16, activation="relu")(out)
-    out = layers.BatchNormalization()(out)
-    outputs = layers.Dense(1)(out)
-
-    # Outputs single value for give state-action
-    model = tf.keras.Model([state_input, action_input], outputs)
-
-    return model
+# action_history = []
 
 
-def policy(state, noise_object, actor_model):
-    sampled_actions = tf.squeeze(actor_model(state))
-    noise = noise_object()
-    # Adding noise to action
-    noised_sampled_actions = sampled_actions.numpy() + noise
+def policy(state, reward, multiplier_noise_generator, addative_noise_generator, actor_model):
+    # SWITCH_THRESHOLD = 0.9
+    # global action_history
+    sampled_actions = tf.squeeze(actor_model(state)).numpy()
+
+    # action_history.pop(0)
+    # action_history.append(sampled_actions)
+    # sampled_actions(np.abs(np.mean(action_history)) > SWITCH_THRESHOLD)
+    if np.isnan(np.sum(sampled_actions)):
+        return np.zeros(sampled_actions.shape)
+    multiplier_noise = multiplier_noise_generator(reward)
+    addative_noise = addative_noise_generator()
+
+    noised_sampled_actions = (sampled_actions + addative_noise) * multiplier_noise
     noised_sampled_actions = apply_keyboard_input(noised_sampled_actions)
     legal_action = np.clip(noised_sampled_actions, LOWER_BOUND, UPPER_BOUND)
-    logging.info('action {}, noise: {}'.format(sampled_actions.numpy(), noise))
+    # logging.info('action {}, noise mul: {}, noise add: {}, total: {}'.format(sampled_actions,
+    #                                                                          multiplier_noise, addative_noise,
+    #                                                                          noised_sampled_actions))
+    assert not np.isnan(np.sum(state))
+    assert not np.isnan(np.sum(addative_noise))
+    assert not np.isnan(np.sum(multiplier_noise))
+    assert not np.isnan(np.sum(sampled_actions))
+    assert not np.isnan(np.sum(noised_sampled_actions))
+    assert not np.isnan(np.sum(legal_action))
     return np.squeeze(legal_action)
 
 

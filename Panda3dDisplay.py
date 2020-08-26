@@ -22,6 +22,7 @@ class Panda3dDisplay(ShowBase):
         self.physics = physics
         self.font = loader.loadFont('courier_new_bold.ttf')
         self.create_light()
+        self.show_debug_frames()
         self.visualize_ground()
         for bone in self.physics.bones_to_nodes:
             self.visualize_bone(bone, self.physics.bones_to_nodes[bone])

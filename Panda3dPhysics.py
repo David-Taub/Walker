@@ -7,9 +7,9 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 20
-JOINT_SPEED = 0.75
-PLANE_FRICTION = 1
+JOINT_POWER = 4
+JOINT_SPEED = 2
+PLANE_FRICTION = 0.75
 GRAVITY_ACCELERATION = 9.81
 STEP_TIME = 1
 
@@ -38,6 +38,8 @@ class Panda3dPhysics:
         self.constraints = []
         [self._create_bone_node(bone) for bone in walker.bones]
         [self._create_joint_constraint(joint) for joint in walker.joints]
+        self.prev_action = np.zeros((len(walker.joints),))
+        self.prev_angles = self.get_joint_angles()
 
     def _create_bone_node(self, bone):
         box_shape = panda3d.bullet.BulletBoxShape(Vec3(bone.length, bone.height, bone.width))
@@ -56,8 +58,8 @@ class Panda3dPhysics:
         child_bone = joint.child_bone
         parent_frame_pos = Vec3(parent_bone.length + joint.gap_radius, 0, 0)
         child_frame_pos = Vec3(-child_bone.length - joint.gap_radius, 0, 0)
-        parent_frame = TransformState.makePos(parent_frame_pos)
-        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(*joint.start_hpr))
+        parent_frame = TransformState.makePosHpr(parent_frame_pos, Vec3(*joint.parent_start_hpr))
+        child_frame = TransformState.makePosHpr(child_frame_pos, Vec3(*joint.child_start_hpr))
         constraint = panda3d.bullet.BulletHingeConstraint(
             self.bones_to_nodes[parent_bone], self.bones_to_nodes[child_bone], parent_frame, child_frame)
         constraint.setLimit(*joint.angle_range)
@@ -80,6 +82,19 @@ class Panda3dPhysics:
 
     def get_bones_angular_velocity(self):
         return np.array([node.getAngularVelocity() for node in self._get_ordered_bone_nodes()])
+
+    def get_contacts(self):
+        result = self.world.contactTest(self.ground_node)
+        names = [contact.getNode0().getName() for contact in result.getContacts()]
+        indices = [int(name[4]) for name in names if name.startswith("Bone")]
+        contacts = np.zeros(len(self.bones_to_nodes))
+        contacts[indices] = 1
+        return contacts
+
+    def get_bones_ground_contacts(self):
+        contacts = [self.world.contactTestPair(self.ground_node, node).getContacts()
+                    for node in self._get_ordered_bone_nodes()]
+        return np.array([len(contact) for contact in contacts])
 
     def set_bones_pos_hpr(self, positions, orientations):
         # position - n x 3 array
@@ -110,14 +125,20 @@ class Panda3dPhysics:
     def get_joint_angles(self):
         return np.array([constraint.getHingeAngle() for constraint in self.constraints])
 
-    # def get_bones_z(self):
-    #     return [node.getTransform().getPos()[2] for node in self.bones_to_nodes]
+# def get_bones_z(self):
+#     return [node.getTransform().getPos()[2] for node in self.bones_to_nodes]
 
     def apply_action(self, action):
         if action is None:
             action = np.zeros([len(self.constraints)])
         for index in range(len(self.constraints)):
-            self.constraints[index].enableAngularMotor(True, action[index] * JOINT_SPEED, JOINT_POWER)
+            self.constraints[index].enableAngularMotor(
+                True, action[index] * JOINT_SPEED, JOINT_POWER)
+        self.prev_action = action
+        self.prev_angles = self.get_joint_angles()
+
+    def get_joint_angles_diff(self):
+        return self.get_joint_angles() - self.prev_angles
 
     def get_walker_position(self):
         return sum([bone_node.getTransform().getPos() for bone_node in self.bones_to_nodes.values()],
@@ -127,25 +148,3 @@ class Panda3dPhysics:
 
     def step(self):
         self.world.doPhysics(STEP_TIME)
-
-    # def remove_shape(self):
-
-    #     if self.is_displaying:
-    #         [np.removeNode() for np in render.getChildren() if np.getName().startswith("Bone")]
-
-    #     for body in self.world.getRigidBodies():
-    #         self.world.removeRigidBody(body)
-    #     for constraint in self.world.getConstraints():
-    #         self.world.removeConstraint(constraint)
-
-    #     if self.is_displaying:
-    #         self.ground_np.removeNode()
-    #         self.ground_node.removeAllChildren()
-
-    # def get_contacts(self):
-    #     result = self.world.contactTest(self.ground_node)
-    #     names = [contact.getNode0().getName() for contact in result.getContacts()]
-    #     indices = [int(name[4]) for name in names if name.startswith("Bone")]
-    #     contacts = np.zeros(len(self.bones_to_nodes))
-    #     contacts[indices] = 1
-    #     return contacts
