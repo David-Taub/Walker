@@ -19,7 +19,10 @@ env = Environment(Shape.Worm())
 
 state_size = env.state_size
 action_size = env.action_size
-CRITIC_LR = 0.001
+
+GAMMA = 0.99
+TAU = 0.05
+CRITIC_LR = 0.002
 ACTOR_LR = 0.001
 MAX_STEPS_PER_EPISODE = 200
 MAX_EPISODES = 10000000
@@ -32,13 +35,11 @@ multiplier_noise_generator = policy_gradient.MarkovSaltPepperNoise(shape=(action
 
 actor_model = policy_gradient.get_actor(state_size, action_size)
 critic_model = policy_gradient.get_critic(state_size, action_size)
+target_actor = policy_gradient.get_actor(state_size, action_size)
+target_critic = policy_gradient.get_critic(state_size, action_size)
 
-# target_actor = get_actor()
-# target_critic = get_critic()
-
-# Making the weights equal initially
-# target_actor.set_weights(actor_model.get_weights())
-# target_critic.set_weights(critic_model.get_weights())
+target_actor.set_weights(actor_model.get_weights())
+target_critic.set_weights(critic_model.get_weights())
 
 # Learning rate for actor-critic models
 
@@ -48,7 +49,7 @@ actor_optimizer = tf.keras.optimizers.RMSprop(learning_rate=ACTOR_LR)
 # Discount factor for future rewards
 # Used to update target networks
 
-buffer = policy_gradient.Buffer(state_size, action_size, BUFFER_SIZE, BATCH_SIZE)
+buffer = policy_gradient.Buffer(state_size, action_size, GAMMA, BUFFER_SIZE, BATCH_SIZE)
 
 tf.keras.utils.plot_model(actor_model, show_shapes=True)
 tf.keras.utils.plot_model(critic_model, show_shapes=True)
@@ -59,7 +60,7 @@ ep_reward_list = []
 # To store average reward history of last few episodes
 avg_reward_list = []
 show = False
-
+learn = True
 
 # Takes about 20 min to train
 for episode_index in range(MAX_EPISODES):
@@ -71,8 +72,12 @@ for episode_index in range(MAX_EPISODES):
         tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
         # utils.tic()
-        action = policy_gradient.policy(tf_prev_state, reward, multiplier_noise_generator,
-                                        addative_noise_generator, actor_model)
+        if learn:
+            action = policy_gradient.policy(tf_prev_state, reward, multiplier_noise_generator,
+                                            addative_noise_generator, actor_model)
+        else:
+            action = policy_gradient.policy(tf_prev_state, reward, None,
+                                            None, actor_model)
         # utils.toc('policy')
         # Recieve state and reward from environment.
         # utils.tic()
@@ -82,15 +87,23 @@ for episode_index in range(MAX_EPISODES):
         episodic_reward += reward
 
         # utils.tic()
-        actor_loss, critic_loss = buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)
-        # utils.toc('learn')
+        if keyboard.is_pressed('l'):
+            learn = True
+        if keyboard.is_pressed('k'):
+            learn = False
+        if learn:
+            actor_loss, critic_loss = buffer.learn(actor_model, target_actor, critic_model,
+                                                   target_critic, actor_optimizer, critic_optimizer)
+            # utils.toc('learn')
 
-        # update_target(TAU)
+            policy_gradient.update_target(actor_model, target_actor, critic_model, target_critic, TAU)
 
         # env.render() if step_index % 5 == 0 else None
         # utils.tic()
         if keyboard.is_pressed('s'):
-            show = not show
+            show = True
+        if keyboard.is_pressed('a'):
+            show = False
         if show:
             env.render()
             env.display.debug_screen_print('\n'.join((
@@ -118,8 +131,8 @@ for episode_index in range(MAX_EPISODES):
     print("Episode {}: Steps: {} [{:0.2f} sec/step] Avg Reward: {:0.1f}".format(episode_index,
                                                                                 step_index, pace, avg_reward))
     avg_reward_list.append(avg_reward)
-    for i in range(5):
-        buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)
+    # for i in range(5):
+    #     buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)
 
 # Plotting graph
 # Episodes versus Avg. Rewards

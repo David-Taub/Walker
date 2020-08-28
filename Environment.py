@@ -1,5 +1,4 @@
 import logging
-import Shape
 from numpy import linalg as LA
 from Panda3dPhysics import Panda3dPhysics
 from Panda3dDisplay import Panda3dDisplay
@@ -16,8 +15,9 @@ TIME_STEP_REWARD = 0.05
 LAST_VELOCITY_HISTORY_SIZE = 80
 LAST_VELOCITY_AVERAGE_INIT = 1
 MIN_LAST_VELOCITY_AVERAGE = 0.5
-ACTUATOR_PENALTY = 1
+ACTUATOR_PENALTY = 5
 VELOCITY_REWARD = 5
+SIDE_PROGRESS_PENALTY = 5
 
 
 class Environment:
@@ -103,6 +103,7 @@ class Environment:
         done = self.update_last_velocity_average() < MIN_MOVEMENT_FOR_END_EPISODE
         reward = VELOCITY_REWARD * self.get_walker_x_velocity()
         reward += TIME_STEP_REWARD
+        reward -= SIDE_PROGRESS_PENALTY * np.abs(self.get_walker_position()[1])
         if action is not None:
             reward -= ACTUATOR_PENALTY * np.mean(action ** 2)
         info = None
