@@ -5,7 +5,8 @@ import tensorflow as tf
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+import time
+import keyboard
 import utils
 from Environment import Environment
 import policy_gradient
@@ -13,8 +14,6 @@ import Shape
 
 np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
-tf.enable_eager_execution()
-
 env = Environment(Shape.Worm())
 # env = Environment(Shape.Legs())
 
@@ -25,7 +24,7 @@ ACTOR_LR = 0.001
 MAX_STEPS_PER_EPISODE = 200
 MAX_EPISODES = 10000000
 BUFFER_SIZE = 1000
-BATCH_SIZE = 1024
+BATCH_SIZE = 4096
 
 addative_noise_generator = policy_gradient.OUActionNoise(mean=np.zeros(
     action_size), std_deviation=1 * np.ones(action_size), theta=0.5, dt=0.01)
@@ -59,14 +58,15 @@ tf.keras.utils.plot_model(critic_model, show_shapes=True)
 ep_reward_list = []
 # To store average reward history of last few episodes
 avg_reward_list = []
+show = False
 
 
 # Takes about 20 min to train
 for episode_index in range(MAX_EPISODES):
-
     prev_state = env.reset()
     episodic_reward = 0
     reward = 0
+    start_time = time.time()
     for step_index in range(MAX_STEPS_PER_EPISODE):
         tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
@@ -82,23 +82,27 @@ for episode_index in range(MAX_EPISODES):
         episodic_reward += reward
 
         # utils.tic()
-        buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)
+        actor_loss, critic_loss = buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)
         # utils.toc('learn')
 
         # update_target(TAU)
 
         # env.render() if step_index % 5 == 0 else None
         # utils.tic()
-        env.render()
-        env.display.debug_screen_print('\n'.join((
-            "Episode: {} [{}]".format(episode_index, step_index),
-            'Episode Reward: {:0.1f} [{:0.1f}]'.format(episodic_reward, reward),
-            'Critic Value: {:0.1f}'.format(policy_gradient.get_critic_value(critic_model, state, action)),
-            'Score: {:0.1f}'.format(env.get_score()),
-            'Action: ' + ', '.join(['{:+0.1f}'.format(i) for i in action]),
-            'Velocity: {:0.1f}'.format(env.get_walker_x_velocity()),
-            # 'State: ' + ', '.join(['{:0.1f}'.format(i) for i in state]),
-        )))
+        if keyboard.is_pressed('s'):
+            show = not show
+        if show:
+            env.render()
+            env.display.debug_screen_print('\n'.join((
+                "Episode: {} [{}]".format(episode_index, step_index),
+                'Episode Reward: {:0.1f} [{:0.1f}]'.format(episodic_reward, reward),
+                'Episode Distance: {:0.1f}'.format(env.get_score()),
+                'Velocity: {:0.1f}'.format(env.get_walker_x_velocity()),
+                'Critic Value: {:0.1f}'.format(policy_gradient.get_critic_value(critic_model, state, action)),
+                'Critic Loss: {:0.1f}'.format(critic_loss),
+                'Action: ' + ', '.join(['{:+0.1f}'.format(i) for i in action]),
+                'Actor Loss: {:0.1f}'.format(actor_loss)
+            )))
         # utils.toc('render')
         # End this episode when `done` is True
         # if done:
@@ -108,10 +112,11 @@ for episode_index in range(MAX_EPISODES):
         prev_state = state
 
     ep_reward_list.append(episodic_reward)
-
+    pace = (time.time() - start_time) / step_index
     # Mean of last 40 episodes
     avg_reward = np.mean(ep_reward_list[-40:])
-    print("Episode {}: Steps: {} Avg Reward: {:0.1f}".format(episode_index, step_index, avg_reward))
+    print("Episode {}: Steps: {} [{:0.2f} sec/step] Avg Reward: {:0.1f}".format(episode_index,
+                                                                                step_index, pace, avg_reward))
     avg_reward_list.append(avg_reward)
     for i in range(5):
         buffer.learn(actor_model, critic_model, actor_optimizer, critic_optimizer)

@@ -12,20 +12,20 @@ MIN_MOVEMENT_FOR_STABILITY = 0.0001
 MIN_MOVEMENT_FOR_END_EPISODE = 0.0001
 PHYSICAL_STEPS_PER_ACTION = 5
 STUCK_PENALTY = -1
-TIME_STEP_REWARD = 0.1
-LAST_VELOCITY_HISTORY_SIZE = 50
+TIME_STEP_REWARD = 0.05
+LAST_VELOCITY_HISTORY_SIZE = 80
 LAST_VELOCITY_AVERAGE_INIT = 1
 MIN_LAST_VELOCITY_AVERAGE = 0.5
-ACTUATOR_PENALTY = 0.1
+ACTUATOR_PENALTY = 1
 VELOCITY_REWARD = 5
 
 
 class Environment:
-    def __init__(self, walker):
+    def __init__(self, walker, render=False):
         self.display = None
         self.physics = Panda3dPhysics()
         self.physics.add_walker(walker)
-        self._wait_for_stability()
+        self._wait_for_stability(render)
         self.init_state = self.get_current_state()
         self.state_size = len(self.init_state)
         self.action_size = len(self.physics.constraints)
@@ -47,13 +47,14 @@ class Environment:
             self.display = Panda3dDisplay(self.physics)
         self.display.render_scene()
 
-    def _wait_for_stability(self):
+    def _wait_for_stability(self, render):
         logging.debug('Waiting for walker to be stale')
         for i in range(MAX_STABILITY_STEPS):
             last_pos = self.physics.get_walker_position()
             self.physics.step()
             movement = LA.norm(last_pos - self.physics.get_walker_position())
-            self.render()
+            if render:
+                self.render()
             # time.sleep(1.5)
             if np.abs(movement) < MIN_MOVEMENT_FOR_STABILITY and i > 10:
                 logging.debug('Walker is stable')

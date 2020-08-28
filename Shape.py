@@ -1,23 +1,22 @@
 import random
 
 INIT_Z = .5
-BONE_FRICTION = 0.75
-BONES_COUNT = 6
+BONES_COUNT = 3
 
 
 class Joint(object):
-    def __init__(self, parent_bone, child_bone, min_range=-120, max_range=120,
+    def __init__(self, parent_bone, child_bone, min_range=-90, max_range=90,
                  gap=None, child_start_hpr=(0, 0, 0), parent_start_hpr=(0, 0, 0)):
         self.child_start_hpr = child_start_hpr
         self.parent_start_hpr = parent_start_hpr
         self.angle_range = (min_range, max_range)
         self.parent_bone = parent_bone
         self.child_bone = child_bone
-        self.gap_radius = parent_bone.height * 1.1 if gap is None else gap
+        self.gap_radius = parent_bone.height * 2 if gap is None else gap
 
 
 class Bone(object):
-    def __init__(self, index, start_pos, width=2, height=0.3, length=3, mass=1, start_hpr=(0, 0, 0)):
+    def __init__(self, index, start_pos, width=2, height=0.3, length=3, mass=1, start_hpr=(0, 0, 0), friction=0.75):
         self.name = 'Bone{}'.format(index)
         self.index = index
         self.width = width
@@ -25,7 +24,7 @@ class Bone(object):
         self.length = length
         self.start_pos = start_pos
         self.start_hpr = start_hpr
-        self.friction = BONE_FRICTION
+        self.friction = friction
         self.mass = mass
 
 
@@ -34,14 +33,6 @@ class Shape(object):
         self.bones = self._gen_bones()
         self.joints = self._gen_joints()
 
-    def _gen_bones(self):
-        bones = []
-        total_x = 0
-        for i in range(BONES_COUNT):
-            bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z), start_hpr=(0, 90, 0)))
-            total_x += bones[-1].length * 2 + bones[-1].height
-        return bones
-
     def _gen_joints(self):
         return [Joint(self.bones[random.choice(range(i))], self.bones[i]) for i in range(1, len(self.bones))]
 
@@ -49,6 +40,17 @@ class Shape(object):
 class Worm(Shape):
     def _gen_joints(self):
         return [Joint(self.bones[i - 1], self.bones[i]) for i in range(1, len(self.bones))]
+
+    def _gen_bones(self):
+        bones = []
+        total_x = 0
+        for i in range(BONES_COUNT):
+            # bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z),
+            #                   start_hpr=(0, 90, 0), friction=(BONES_COUNT - i) * 0.20))
+            bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z),
+                              start_hpr=(0, 90, 0), friction=5 * int(i == 2)))
+            total_x += bones[-1].length * 2 + bones[-1].height
+        return bones
 
 
 class Legs(Shape):

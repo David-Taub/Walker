@@ -6,11 +6,13 @@ import matplotlib.pyplot as plt
 
 from tensorflow.keras import layers
 
-GAMMA = 0.50
+GAMMA = 0.99
 # TAU = 0.05
 UPPER_BOUND = 1
 LOWER_BOUND = -1
 ACTION_REGULARIZATION = 0
+ACTION_L2_REG_FACTOR = 0
+CRITIC_L2_REG_FACTOR = 0
 
 
 class OUActionNoise:
@@ -49,8 +51,8 @@ class MarkovSaltPepperNoise:
     def _reward_to_probabilty(self, reward):
         MAX_PROB = 0.04
         MIN_PROB = 0.001
-        MIN_REWARD = 0
-        MAX_REWARD = 5
+        MIN_REWARD = 1
+        MAX_REWARD = 7
         reward = min(MAX_REWARD, max(reward, MIN_REWARD))
         reward_streched = (reward - MIN_REWARD) / (MAX_REWARD - MIN_REWARD)
         return MIN_PROB + (1 - reward_streched) * (MAX_PROB - MIN_PROB)
@@ -85,7 +87,7 @@ class Buffer:
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, state_size))
 
-    # Takes (s,a,r,s') obervation tuple as input
+    # Takes (s,a,r,s') observation tuple as input
     def record(self, obs_tuple):
         # Set index to zero if buffer_capacity is exceeded,
         # replacing old records
@@ -120,12 +122,11 @@ class Buffer:
         with tf.GradientTape() as tape:
             # target_actions = target_actor(next_state_batch)
             target_actions = actor_model(next_state_batch)
-            if np.isnan(np.sum(target_actions.numpy())):
-                return
             # y = reward_batch + GAMMA * target_critic([next_state_batch, target_actions])
             y = reward_batch + GAMMA * critic_model([next_state_batch, target_actions])
             critic_value = critic_model([state_batch, action_batch])
-            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
+            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value)) + \
+                CRITIC_L2_REG_FACTOR * tf.math.reduce_mean(tf.math.square(critic_value))
         critic_grad = tape.gradient(critic_loss, critic_model.trainable_variables)
         assert not np.isnan(np.sum(action_batch.numpy()))
         assert not np.isnan(np.sum(state_batch.numpy()))
@@ -142,7 +143,8 @@ class Buffer:
         with tf.GradientTape() as tape:
             actions = actor_model(state_batch)
             critic_value = critic_model([state_batch, actions])
-            actor_loss = -tf.math.reduce_mean(critic_value)
+            action_mean_l2 = tf.math.reduce_mean(tf.math.sqrt(tf.math.reduce_sum(tf.math.square(actions), 1)), 0)
+            actor_loss = -tf.math.reduce_mean(critic_value) + ACTION_L2_REG_FACTOR * action_mean_l2
 
         actor_grad = tape.gradient(actor_loss, actor_model.trainable_variables)
         # im.set_array(np.hstack([a.numpy().flatten() for a in actor_model.trainable_variables]).reshape((77, 36)))
@@ -154,7 +156,7 @@ class Buffer:
             zip(actor_grad, actor_model.trainable_variables)
         )
 
-
+        return actor_loss, critic_loss
 # This update target parameters slowly
 # Based on rate `TAU`, which is much less than one.
 # def update_target():
@@ -177,18 +179,18 @@ def get_actor(state_size, action_size):
     # last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 
     inputs = layers.Input(shape=(state_size,))
-    out = layers.Dense(128, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(inputs)
+    out = layers.Dense(128, activation="relu")(inputs)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(64, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(inputs)
+    out = layers.Dense(64, activation="relu")(inputs)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.Dense(32, activation="relu")(out)
+    # out = layers.BatchNormalization()(out)
+    # out = layers.Dense(32, activation="relu")(out)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.Dense(16, activation="relu")(out)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
-    out = layers.BatchNormalization()(out)
-    # outputs = layers.Dense(action_size, kernel_regularizer='l2', bias_regularizer='l2')(out)
-    outputs = layers.Dense(action_size, activation="tanh", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    # outputs = layers.Dense(action_size)(out)
+    outputs = layers.Dense(action_size, activation="tanh")(out)
     # outputs = layers.Dense(1, activation="tanh", kernel_initializer=last_init)(out)
     # outputs = layers.Dense(action_size, activation="tanh", activity_regularizer='l2')(out)
 
@@ -200,27 +202,27 @@ def get_actor(state_size, action_size):
 def get_critic(state_size, action_size):
     # State as input
     state_input = layers.Input(shape=(state_size))
-    state_out = layers.Dense(128, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_input)
+    state_out = layers.Dense(128, activation="relu")(state_input)
     state_out = layers.BatchNormalization()(state_out)
-    state_out = layers.Dense(64, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_input)
+    state_out = layers.Dense(64, activation="relu")(state_input)
     state_out = layers.BatchNormalization()(state_out)
-    state_out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(state_out)
+    state_out = layers.Dense(32, activation="relu")(state_out)
     state_out = layers.BatchNormalization()(state_out)
 
     # Action as input
     action_input = layers.Input(shape=(action_size))
-    action_out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.Dense(32, activation="relu")(action_input)
     action_out = layers.BatchNormalization()(action_out)
-    action_out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.Dense(16, activation="relu")(action_input)
     action_out = layers.BatchNormalization()(action_out)
-    action_out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(action_input)
+    action_out = layers.Dense(16, activation="relu")(action_input)
     action_out = layers.BatchNormalization()(action_out)
     # Both are passed through seperate layer before concatenating
     concat = layers.Concatenate()([state_out, action_out])
 
-    out = layers.Dense(32, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(concat)
+    out = layers.Dense(32, activation="relu")(concat)
     out = layers.BatchNormalization()(out)
-    out = layers.Dense(16, activation="relu", kernel_regularizer='l2', bias_regularizer='l2')(out)
+    out = layers.Dense(16, activation="relu")(out)
     out = layers.BatchNormalization()(out)
     outputs = layers.Dense(1)(out)
 
@@ -259,7 +261,9 @@ def policy(state, reward, multiplier_noise_generator, addative_noise_generator, 
     multiplier_noise = multiplier_noise_generator(reward)
     addative_noise = addative_noise_generator()
 
-    noised_sampled_actions = (sampled_actions + addative_noise) * multiplier_noise
+    noised_sampled_actions = sampled_actions
+    noised_sampled_actions += addative_noise
+    noised_sampled_actions *= multiplier_noise
     noised_sampled_actions = apply_keyboard_input(noised_sampled_actions)
     legal_action = np.clip(noised_sampled_actions, LOWER_BOUND, UPPER_BOUND)
     # logging.info('action {}, noise mul: {}, noise add: {}, total: {}'.format(sampled_actions,

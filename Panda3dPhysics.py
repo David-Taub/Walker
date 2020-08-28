@@ -7,7 +7,7 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 4
+JOINT_POWER = 2.5
 JOINT_SPEED = 2
 PLANE_FRICTION = 0.75
 GRAVITY_ACCELERATION = 9.81
