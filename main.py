@@ -12,6 +12,7 @@ from Environment import Environment
 import policy_gradient
 import Shape
 
+np.random.seed(0)
 np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 env = Environment(Shape.Worm())
@@ -143,8 +144,8 @@ plt.show()
 
 
 # Save the weights
-actor_model.save_weights("walker_actor.h5")
-critic_model.save_weights("walker_critic.h5")
+# actor_model.save_weights("outputs\\walker_actor.h5")
+# critic_model.save_weights("outputs\\walker_critic.h5")
 
-# target_actor.save_weights("walker_target_actor.h5")
-# target_critic.save_weights("walker_target_critic.h5")
+target_actor.save_weights("outputs\\walker_target_actor.h5")
+target_critic.save_weights("outputs\\walker_target_critic.h5")
