@@ -8,15 +8,15 @@ import time
 
 MAX_STABILITY_STEPS = 500
 MIN_MOVEMENT_FOR_STABILITY = 0.0001
-MIN_MOVEMENT_FOR_END_EPISODE = 0.0001
+MIN_MOVEMENT_FOR_END_EPISODE = 0.1
 PHYSICAL_STEPS_PER_ACTION = 5
 STUCK_PENALTY = -1
 TIME_STEP_REWARD = 0.05
-LAST_VELOCITY_HISTORY_SIZE = 80
+LAST_VELOCITY_HISTORY_SIZE = 50
 LAST_VELOCITY_AVERAGE_INIT = 1
 MIN_LAST_VELOCITY_AVERAGE = 0.5
-ACTUATOR_PENALTY = 5
-VELOCITY_REWARD = 5
+ACTUATOR_PENALTY = 2
+VELOCITY_REWARD = 6
 SIDE_PROGRESS_PENALTY = 5
 
 
@@ -32,6 +32,11 @@ class Environment:
         self.init_bones_positions = self.physics.get_bones_relative_positions()
         self.init_bones_orientations = self.physics.get_bones_orientations()
         self.reset()
+
+    def remove_display(self):
+        if self.display is not None:
+            self.display.close_window()
+            self.display = None
 
     def reset(self):
         logging.debug('resetting')
@@ -103,7 +108,7 @@ class Environment:
         done = self.update_last_velocity_average() < MIN_MOVEMENT_FOR_END_EPISODE
         reward = VELOCITY_REWARD * self.get_walker_x_velocity()
         reward += TIME_STEP_REWARD
-        reward -= SIDE_PROGRESS_PENALTY * np.abs(self.get_walker_position()[1])
+        reward -= SIDE_PROGRESS_PENALTY * np.abs(self.physics.get_walker_position()[1])
         if action is not None:
             reward -= ACTUATOR_PENALTY * np.mean(action ** 2)
         info = None

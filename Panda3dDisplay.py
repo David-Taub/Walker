@@ -32,6 +32,12 @@ class Panda3dDisplay(ShowBase):
         taskMgr.add(self.reposition_light, "_reposition_light")
         logging.debug('Visualization setup done')
 
+    def close_window(self):
+        base.destroy()
+
+    def finalizeExit(self):
+        pass
+
     def reposition_camera(self, task):
         camera_offset = panda3d.core.Vec3(30, 30, 30)
         self.camera.setPos(self.physics.get_walker_position() + camera_offset)
@@ -46,6 +52,7 @@ class Panda3dDisplay(ShowBase):
 
     def show_debug_frames(self):
         debug_node = panda3d.bullet.BulletDebugNode('Debug')
+        debug_node.drawMaskChanged()
         debug_node.showWireframe(True)
         debug_node.showConstraints(True)
         debug_node.showBoundingBoxes(False)

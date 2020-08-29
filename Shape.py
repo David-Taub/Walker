@@ -45,10 +45,11 @@ class Worm(Shape):
         bones = []
         total_x = 0
         for i in range(BONES_COUNT):
-            # bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z),
-            #                   start_hpr=(0, 90, 0), friction=(BONES_COUNT - i) * 0.20))
             bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z),
-                              start_hpr=(0, 90, 0), friction=5 * int(i == 2)))
+                              # start_hpr=(0, 90, 0), friction=0.5))
+                              start_hpr=(0, 90, 0), friction=(i + 1) * 5 / BONES_COUNT))
+            # bones.append(Bone(index=i, start_pos=(total_x, 0, INIT_Z),
+            #                   start_hpr=(0, 90, 0), friction=5 * int(i == 2)))
             total_x += bones[-1].length * 2 + bones[-1].height
         return bones
 

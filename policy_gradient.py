@@ -2,10 +2,10 @@ import logging
 import tensorflow as tf
 import keyboard
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from tensorflow.keras import layers
-from tensorflow.keras import activations
+# from tensorflow.keras import activations
 
 UPPER_BOUND = 1
 LOWER_BOUND = -1
@@ -15,34 +15,29 @@ CRITIC_L2_REG_FACTOR = 0
 
 
 class OUActionNoise:
-    def __init__(self, mean, std_deviation, theta=0.5, dt=1e-2, x_initial=None):
+    """
+    Ornstein-Uhlenbeck process
+    """
+
+    def __init__(self, mean, std_deviation, theta, dt):
         self.theta = theta
         self.mean = mean
+        self.previous_x = mean
         self.std_dev = std_deviation
         self.dt = dt
-        self.x_initial = x_initial
-        self.reset()
 
     def __call__(self):
-        # Formula taken from https://www.wikipedia.org/wiki/Ornstein-Uhlenbeck_process.
-        # x = (self.x_prev + self.theta * (self.mean - self.x_prev) * self.dt + (
-        #     self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)))
-        x = self.x_prev + self.theta * (self.mean - self.x_prev) * self.dt + \
-            self.std_dev * self.dt * np.random.normal(size=self.mean.shape)
-        # Store x into x_prev
-        # Makes next noise dependent on current one
-        self.x_prev = x
-        return x
 
-    def reset(self):
-        if self.x_initial is not None:
-            self.x_prev = self.x_initial
-        else:
-            self.x_prev = np.zeros_like(self.mean)
+        # x = (self.previous_x + self.theta * (self.mean - self.previous_x) * self.dt + (
+        #     self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)))
+        x = self.previous_x + self.theta * (self.mean - self.previous_x) * self.dt + \
+            self.std_dev * self.dt * np.random.normal(size=self.mean.shape)
+        self.previous_x = x
+        return x
 
 
 class MarkovSaltPepperNoise:
-    def __init__(self, shape, salt_to_pepper=0.02, pepper_to_salt=0.1):
+    def __init__(self, shape, salt_to_pepper=0.02, pepper_to_salt=0.05):
         self.salt_to_pepper = salt_to_pepper
         self.pepper_to_salt = pepper_to_salt
         self.noise = np.ones(shape)
@@ -60,80 +55,61 @@ class MarkovSaltPepperNoise:
         self.salt_to_pepper = self._reward_to_probabilty(reward)
         switch_salt_to_pepper = np.random.binomial(1, self.salt_to_pepper, self.noise.shape)
         switch_pepper_to_salt = np.random.binomial(1, self.pepper_to_salt, self.noise.shape)
-        self.noise[(self.noise == 1) & (switch_salt_to_pepper == 1)] = -1
-        self.noise[(self.noise == -1) & (switch_pepper_to_salt == 1)] = 1
+        self.noise[(self.noise == 1) & (switch_salt_to_pepper == 1)] = np.random.uniform(low=-1.5, high=-0.5)
+        self.noise[(self.noise != 1) & (switch_pepper_to_salt == 1)] = 1
         return self.noise
 
 
 class Buffer:
     def __init__(self, state_size, action_size, gamma, buffer_capacity=100000, batch_size=64):
         # plt.ion()
-        self.gamma = gamma
         # self.im = plt.imshow(np.zeros((77, 36)), cmap='gray', vmin=-0.5, vmax=0.5)
-
-        # Number of "experiences" to store at max
+        self.gamma = gamma
         self.buffer_capacity = buffer_capacity
-        # Num of tuples to train on.
         self.batch_size = batch_size
-
-        # Its tells us num of times record() was called.
         self.buffer_counter = 0
-
-        # Instead of list of tuples as the exp.replay concept go
-        # We use different np.arrays for each tuple element
         self.state_buffer = np.zeros((self.buffer_capacity, state_size))
         self.action_buffer = np.zeros((self.buffer_capacity, action_size))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, state_size))
 
-    # Takes (s,a,r,s') observation tuple as input
-    def record(self, obs_tuple):
-        # Set index to zero if buffer_capacity is exceeded,
-        # replacing old records
+    def record(self, observation):
         index = self.buffer_counter % self.buffer_capacity
 
-        self.state_buffer[index] = obs_tuple[0]
-        self.action_buffer[index] = obs_tuple[1]
-        self.reward_buffer[index] = obs_tuple[2]
-        self.next_state_buffer[index] = obs_tuple[3]
+        self.state_buffer[index] = observation[0]
+        self.action_buffer[index] = observation[1]
+        self.reward_buffer[index] = observation[2]
+        self.next_state_buffer[index] = observation[3]
 
         self.buffer_counter += 1
 
-    # We compute the loss and update parameters
     def learn(self, actor_model, target_actor, critic_model, target_critic, actor_optimizer, critic_optimizer):
-        # Get sampling range
+        # DDPG learning is done by calculating gradients based on past (s,a,r,s') observation
         record_range = min(self.buffer_counter, self.buffer_capacity)
-        # Randomly sample indices
         pick_probability = self.reward_buffer[0:record_range] - np.min(self.reward_buffer[0:record_range]) \
             + np.finfo(float).eps
         pick_probability /= np.sum(pick_probability)
         batch_indices = np.random.choice(record_range, self.batch_size, p=pick_probability.reshape(-1))
 
-        # Convert to tensors
         state_batch = tf.convert_to_tensor(self.state_buffer[batch_indices])
         action_batch = tf.convert_to_tensor(self.action_buffer[batch_indices])
         reward_batch = tf.convert_to_tensor(self.reward_buffer[batch_indices])
-        reward_batch = tf.cast(reward_batch, dtype=tf.float32)
         next_state_batch = tf.convert_to_tensor(self.next_state_buffer[batch_indices])
 
-        # Training and updating Actor & Critic networks.
-        # See Pseudo Code.
         with tf.GradientTape() as tape:
             target_actions = target_actor(next_state_batch)
-            # target_actions = actor_model(next_state_batch)
-            # y = reward_batch + self.gamma * critic_model([next_state_batch, target_actions])
-            y = reward_batch + self.gamma * target_critic([next_state_batch, target_actions])
+            y = (1 - self.gamma) * reward_batch + self.gamma * target_critic([next_state_batch, target_actions])
             critic_value = critic_model([state_batch, action_batch])
-            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value)) + \
-                CRITIC_L2_REG_FACTOR * tf.math.reduce_mean(tf.math.square(critic_value))
+            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
+            # + CRITIC_L2_REG_FACTOR * tf.math.reduce_mean(tf.math.square(critic_value))
         critic_grad = tape.gradient(critic_loss, critic_model.trainable_variables)
-        assert not np.isnan(np.sum(action_batch.numpy()))
-        assert not np.isnan(np.sum(state_batch.numpy()))
-        assert not np.isnan(np.sum(next_state_batch.numpy()))
-        assert not np.isnan(np.sum(reward_batch.numpy()))
-        assert not np.isnan(np.sum(target_actions.numpy()))
-        assert not np.isnan(np.sum(critic_value.numpy()))
-        assert not np.isnan(np.sum(critic_loss.numpy()))
+        # assert not np.isnan(np.sum(action_batch.numpy()))
+        # assert not np.isnan(np.sum(state_batch.numpy()))
+        # assert not np.isnan(np.sum(next_state_batch.numpy()))
+        # assert not np.isnan(np.sum(reward_batch.numpy()))
+        # assert not np.isnan(np.sum(target_actions.numpy()))
+        # assert not np.isnan(np.sum(critic_value.numpy()))
+        # assert not np.isnan(np.sum(critic_loss.numpy()))
 
         critic_optimizer.apply_gradients(
             zip(critic_grad, critic_model.trainable_variables)
@@ -142,8 +118,9 @@ class Buffer:
         with tf.GradientTape() as tape:
             actions = actor_model(state_batch)
             critic_value = critic_model([state_batch, actions])
-            action_mean_l2 = tf.math.reduce_mean(tf.math.sqrt(tf.math.reduce_sum(tf.math.square(actions), 1)), 0)
-            actor_loss = -tf.math.reduce_mean(critic_value) + ACTION_L2_REG_FACTOR * action_mean_l2
+            # action_mean_l2 = tf.math.reduce_mean(tf.math.sqrt(tf.math.reduce_sum(tf.math.square(actions), 1)), 0)
+            actor_loss = -tf.math.reduce_mean(critic_value)
+            # + ACTION_L2_REG_FACTOR * action_mean_l2
 
         actor_grad = tape.gradient(actor_loss, actor_model.trainable_variables)
         # im.set_array(np.hstack([a.numpy().flatten() for a in actor_model.trainable_variables]).reshape((77, 36)))
@@ -175,8 +152,6 @@ def update_target(actor_model, target_actor, critic_model, target_critic, tau):
 
 
 def get_actor(state_size, action_size):
-    # last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
-
     inputs = layers.Input(shape=(state_size,))
     out = layers.Dense(64, activation="relu")(inputs)
     out = layers.BatchNormalization()(out)
@@ -197,13 +172,11 @@ def get_actor(state_size, action_size):
     # outputs = layers.Dense(1, activation="tanh", kernel_initializer=last_init)(out)
     # outputs = layers.Dense(action_size, activation="tanh", activity_regularizer='l2')(out)
 
-    # outputs = outputs * UPPER_BOUND
     model = tf.keras.Model(inputs, outputs)
     return model
 
 
 def get_critic(state_size, action_size):
-    # State as input
     state_input = layers.Input(shape=(state_size))
     state_out = layers.Dense(32, activation="relu")(state_input)
     state_out = layers.BatchNormalization()(state_out)
@@ -212,15 +185,13 @@ def get_critic(state_size, action_size):
     state_out = layers.Dense(32, activation="relu")(state_out)
     state_out = layers.BatchNormalization()(state_out)
 
-    # Action as input
     action_input = layers.Input(shape=(action_size))
-    action_out = layers.Dense(32, activation="relu")(action_input)
-    action_out = layers.BatchNormalization()(action_out)
     action_out = layers.Dense(16, activation="relu")(action_input)
     action_out = layers.BatchNormalization()(action_out)
-    action_out = layers.Dense(16, activation="relu")(action_input)
-    action_out = layers.BatchNormalization()(action_out)
-    # Both are passed through seperate layer before concatenating
+    # action_out = layers.Dense(32, activation="relu")(action_input)
+    # action_out = layers.BatchNormalization()(action_out)
+    # action_out = layers.Dense(16, activation="relu")(action_input)
+    # action_out = layers.BatchNormalization()(action_out)
     concat = layers.Concatenate()([state_out, action_out])
 
     out = layers.Dense(32, activation="relu")(concat)
@@ -250,11 +221,6 @@ def apply_keyboard_input(action):
 
 def policy(state, reward, multiplier_noise_generator, addative_noise_generator, actor_model):
     sampled_actions = tf.squeeze(actor_model(state)).numpy()
-    # action = [np.random.choice(3, p=np.squeeze(sampled_actions[i, :])) - 1 for i in range(action_size)]
-
-    if np.isnan(np.sum(sampled_actions)):
-        return np.zeros(sampled_actions.shape)
-
     noised_sampled_actions = sampled_actions
 
     if addative_noise_generator is not None:
@@ -271,10 +237,10 @@ def policy(state, reward, multiplier_noise_generator, addative_noise_generator, 
 
     noised_sampled_actions = apply_keyboard_input(noised_sampled_actions)
     legal_action = np.clip(noised_sampled_actions, LOWER_BOUND, UPPER_BOUND)
-    assert not np.isnan(np.sum(state))
-    assert not np.isnan(np.sum(sampled_actions))
-    assert not np.isnan(np.sum(noised_sampled_actions))
-    assert not np.isnan(np.sum(legal_action))
+    # assert not np.isnan(np.sum(state))
+    # assert not np.isnan(np.sum(sampled_actions))
+    # assert not np.isnan(np.sum(noised_sampled_actions))
+    # assert not np.isnan(np.sum(legal_action))
     return np.squeeze(legal_action)
 
 
