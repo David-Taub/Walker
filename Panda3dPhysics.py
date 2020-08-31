@@ -7,8 +7,8 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 2.5
-JOINT_SPEED = 3
+JOINT_POWER = 3
+JOINT_SPEED = 2
 PLANE_FRICTION = 0.75
 GRAVITY_ACCELERATION = 9.81
 STEP_TIME = 1
@@ -72,6 +72,8 @@ class Panda3dPhysics:
 
     def get_bones_relative_positions(self):
         walker_position = self.get_walker_position()
+        walker_position[1] = 0
+        walker_position[2] = 0
         return np.array([node.getTransform().getPos() - walker_position for node in self._get_ordered_bone_nodes()])
 
     def get_bones_orientations(self):

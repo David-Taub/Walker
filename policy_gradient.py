@@ -11,7 +11,7 @@ UPPER_BOUND = 1
 LOWER_BOUND = -1
 ACTION_REGULARIZATION = 0
 ACTION_L2_REG_FACTOR = 0
-CRITIC_L2_REG_FACTOR = 0
+CRITIC_L2_REG_FACTOR = 0.01
 
 
 class OUActionNoise:
@@ -37,13 +37,13 @@ class OUActionNoise:
 
 
 class MarkovSaltPepperNoise:
-    def __init__(self, shape, salt_to_pepper=0.02, pepper_to_salt=0.05):
+    def __init__(self, shape, salt_to_pepper=0.02, pepper_to_salt=0.1):
         self.salt_to_pepper = salt_to_pepper
         self.pepper_to_salt = pepper_to_salt
         self.noise = np.ones(shape)
 
     def _reward_to_probabilty(self, reward):
-        MAX_PROB = 0.05
+        MAX_PROB = 0.01
         MIN_PROB = 0.001
         MIN_REWARD = 1
         MAX_REWARD = 7
@@ -62,7 +62,7 @@ class MarkovSaltPepperNoise:
 
 class Buffer:
     def __init__(self, state_size, action_size, gamma, buffer_capacity=100000, batch_size=64):
-        # plt.ion()
+
         # self.im = plt.imshow(np.zeros((77, 36)), cmap='gray', vmin=-0.5, vmax=0.5)
         self.gamma = gamma
         self.buffer_capacity = buffer_capacity
@@ -100,8 +100,8 @@ class Buffer:
             target_actions = target_actor(next_state_batch)
             y = (1 - self.gamma) * reward_batch + self.gamma * target_critic([next_state_batch, target_actions])
             critic_value = critic_model([state_batch, action_batch])
-            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
-            # + CRITIC_L2_REG_FACTOR * tf.math.reduce_mean(tf.math.square(critic_value))
+            critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value)) \
+                + CRITIC_L2_REG_FACTOR * tf.math.reduce_mean(tf.math.square(critic_value))
         critic_grad = tape.gradient(critic_loss, critic_model.trainable_variables)
         # assert not np.isnan(np.sum(action_batch.numpy()))
         # assert not np.isnan(np.sum(state_batch.numpy()))
