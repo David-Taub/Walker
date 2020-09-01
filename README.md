@@ -1,5 +1,5 @@
 # Learning to Walk
-Training locomotive skills to using Deep Deterministic Policy Gradient (DDPG) learning algorithm.
+Training locomotive skills to a worm-like shape. Using Deep Deterministic Policy Gradient (DDPG) learning algorithm.
 
 ![Alt Text](https://raw.githubusercontent.com/David-Taub/Walker/master/outputs/hopper_540p.gif)
 ![Alt Text](https://raw.githubusercontent.com/David-Taub/Walker/master/outputs/hopper2_540p.gif)
