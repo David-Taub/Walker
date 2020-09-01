@@ -76,6 +76,9 @@ def episode(env, multiplier_noise_generator, addative_noise_generator, learn, sh
             actor_loss, critic_loss = buffer.learn(actor_model, target_actor, critic_model,
                                                    target_critic, actor_optimizer, critic_optimizer)
             policy_gradient.update_target(actor_model, target_actor, critic_model, target_critic, TAU)
+        else:
+            critic_loss = 0
+            actor_loss = 0
 
         if show:
             env.render()

@@ -1,7 +1,7 @@
 import random
 
 INIT_Z = .5
-BONES_COUNT = 3
+BONES_COUNT = 4
 
 
 class Joint(object):

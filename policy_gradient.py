@@ -11,7 +11,7 @@ UPPER_BOUND = 1
 LOWER_BOUND = -1
 ACTION_REGULARIZATION = 0
 ACTION_L2_REG_FACTOR = 0
-CRITIC_L2_REG_FACTOR = 0.01
+CRITIC_L2_REG_FACTOR = 0.1
 
 
 class OUActionNoise:
@@ -43,7 +43,7 @@ class MarkovSaltPepperNoise:
         self.noise = np.ones(shape)
 
     def _reward_to_probabilty(self, reward):
-        MAX_PROB = 0.01
+        MAX_PROB = 0.05
         MIN_PROB = 0.001
         MIN_REWARD = 1
         MAX_REWARD = 7
