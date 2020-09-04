@@ -103,12 +103,15 @@ class Panda3dDisplay(ShowBase):
     def visualize_ground(self):
         card_maker = panda3d.core.CardMaker('')
         card_maker.setFrame(-100, 100, -100, 100)
-        self.ground_node = card_maker.generate()
-        self.ground_np = render.attachNewNode(self.ground_node)
-        self.ground_np.lookAt(0, 0, -10)
-        self.ground_np.setPos(panda3d.core.Vec3(0, 0, 0))
-        self.ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
-        # self.ground_np.setColor(0.7, 0.1, 0.1, 1.0)
+        ground_np = render.attachNewNode(card_maker.generate())
+        ground_np.lookAt(0, 0, -10)
+        ground_np.setPos(panda3d.core.Vec3(0, 0, 0))
+        ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
+        card_maker.setFrame(100, 300, -100, 100)
+        ground_np = render.attachNewNode(card_maker.generate())
+        ground_np.lookAt(0, 0, -10)
+        ground_np.setPos(panda3d.core.Vec3(0, 0, 0))
+        ground_np.setTexture(loader.loadTexture('maps/grid.rgb'))
 
     def visualize_bone(self, bone, bone_node):
         bone_display_node = render.attachNewNode(bone_node)
