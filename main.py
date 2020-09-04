@@ -179,7 +179,7 @@ class DDPG:
                                                                                                steps, pace,
                                                                                                average_reward))
             if episode_index % 10 == 0:
-
+                self.buffer.prioritize_buffer(self.target_actor, self.critic_model, self.target_critic)
                 average_reward_test = np.mean([self.episode(learn=False, episode_index=episode_index)[0]
                                                for i in range(self.NO_NOISE_TEST_EPISODES)])
 

@@ -67,21 +67,26 @@ class Buffer:
         self.gamma = gamma
         self.buffer_capacity = buffer_capacity
         self.batch_size = batch_size
-        self.buffer_counter = 0
+        self.buffer_current_size = 0
+        self.buffer_write_index = 0
         self.state_buffer = np.zeros((self.buffer_capacity, state_size))
         self.action_buffer = np.zeros((self.buffer_capacity, action_size))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, state_size))
 
     def record(self, observation):
-        index = self.buffer_counter % self.buffer_capacity
+        # when the buffer is not in full capacity, we fill it from the top
+        # when it is full, we overwrite from the end toward the beginning
+        index = self.buffer_write_index if self.buffer_write_index < self.buffer_capacity else \
+            self.buffer_capacity - 1 - (self.buffer_write_index % self.buffer_capacity)
 
         self.state_buffer[index] = observation[0]
         self.action_buffer[index] = observation[1]
         self.reward_buffer[index] = observation[2]
         self.next_state_buffer[index] = observation[3]
 
-        self.buffer_counter += 1
+        self.buffer_write_index += 1
+        self.buffer_current_size = min(self.buffer_capacity, self.buffer_current_size + 1)
 
     def calc_critic_loss(self, indices, target_actor, critic_model, target_critic):
         state_batch = self.state_buffer[indices]
@@ -94,27 +99,33 @@ class Buffer:
         critic_losses = tf.math.square(y - critic_value) + CRITIC_L2_REG_FACTOR * tf.math.square(critic_value)
         return critic_losses
 
-    def calc_sample_probabilities(self, losses):
+    def get_prioritize_batch_indices(self):
         """
         Rank variant of "Prioritized Experience Replay", Schaul et al. 2015 of Google DeepMind
         """
         ALPHA = 0.7
-        ranks = np.argsort(np.abs(losses)) + np.finfo(float).eps
+        ranks = range(self.buffer_current_size) + np.finfo(float).eps
         p = (1 / ranks) ** ALPHA
         sample_probabilities = p / np.sum(p)
-        return sample_probabilities
+        batch_indices = np.random.choice(self.buffer_current_size, self.batch_size, p=sample_probabilities.flatten())
+        return batch_indices
+
+    def prioritize_buffer(self, target_actor, critic_model, target_critic):
+        self.buffer_write_index = self.buffer_current_size
+        buffer_indices = range(self.buffer_current_size)
+        critic_losses = self.calc_critic_loss(buffer_indices, target_actor, critic_model, target_critic)
+        sorted_indices = np.argsort(np.abs(critic_losses.numpy().flatten()))[::-1]
+        self.state_buffer[buffer_indices] = self.state_buffer[sorted_indices]
+        self.action_buffer[buffer_indices] = self.action_buffer[sorted_indices]
+        self.reward_buffer[buffer_indices] = self.reward_buffer[sorted_indices]
+        self.next_state_buffer[buffer_indices] = self.next_state_buffer[sorted_indices]
 
     def learn(self, actor_model, target_actor, critic_model, target_critic, actor_optimizer, critic_optimizer):
         # TODO: multi-step learning
-        record_range = min(self.buffer_counter, self.buffer_capacity)
         # Uniform mini-batch sampling:
-        # batch_indices = np.random.choice(record_range, self.batch_size)
 
-        buffer_indices = range(min(self.buffer_counter, self.buffer_capacity))
-        critic_losses = self.calc_critic_loss(buffer_indices, target_actor, critic_model, target_critic)
-        buffer_critic_loss = np.mean(critic_losses)
-        sample_probabilities = self.calc_sample_probabilities(critic_losses)
-        batch_indices = np.random.choice(record_range, self.batch_size, p=sample_probabilities.flatten())
+        # batch_indices = np.random.choice(min(self.buffer_write_index, self.buffer_capacity), self.batch_size)
+        batch_indices = self.get_prioritize_batch_indices()
         with tf.GradientTape() as tape:
             critic_losses = self.calc_critic_loss(batch_indices, target_actor, critic_model, target_critic)
             critic_loss = tf.math.reduce_mean(tf.gather(critic_losses, batch_indices))
@@ -138,7 +149,7 @@ class Buffer:
             zip(actor_grad, actor_model.trainable_variables)
         )
 
-        return actor_loss, buffer_critic_loss
+        return actor_loss, critic_loss
 
 
 def get_actor(state_size, action_size):
