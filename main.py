@@ -230,6 +230,7 @@ class DDPG:
             mlflow.log_metric('episode_reward', total_episode_reward)
             mlflow.log_metric('episode_reward_smoothed', average_reward)
             mlflow.log_metric('episode_step_count', steps)
+            # TODO: use consts here
             if episode_index % 10 == 0:
                 self.buffer.prioritize_buffer(self.target_actor, self.critic_model, self.target_critic)
                 average_reward_test = np.mean([self.episode(learn=False, episode_index=episode_index)[0]
@@ -237,8 +238,8 @@ class DDPG:
                 self.noise_level = min(self.MAX_NOISE_LEVEL, 500 / max(np.finfo(float).eps, average_reward_test) ** 0.5)
                 self.addative_noise_generator = noise_generators.OUActionNoise(
                     output_size=self.env.action_size, std_deviation=90 * self.noise_level)
-                # self.multiplier_noise_generator = noise_generators.MarkovSaltPepperNoise(
-                #     output_size=self.env.action_size, salt_to_pepper=noise_level)
+                self.multiplier_noise_generator = noise_generators.MarkovSaltPepperNoise(
+                    output_size=self.env.action_size, salt_to_pepper=self.noise_level)
 
                 mlflow.keras.log_model(self.target_actor, 'target_actor')
                 mlflow.keras.log_model(self.target_critic, 'target_critic')
@@ -249,9 +250,10 @@ class DDPG:
                     self.save_models()
                 else:
                     self.load_models()
-                logging.info("Test Episodes {}: Avg Reward: {:0.1f} (best: {:0.1f})".format(episode_index,
-                                                                                            average_reward_test,
-                                                                                            self.best_run_multiple_episodes))
+                logging.info(
+                    "Test Episodes {}: Avg Reward: {:0.1f} (best: {:0.1f})".format(episode_index,
+                                                                                   average_reward_test,
+                                                                                   self.best_run_multiple_episodes))
                 # mlflow.log_metric('episode_noise_level', noise_level)
                 mlflow.log_metric('episode_reward_test', average_reward_test)
                 mlflow.log_metric('best_run_multiple_episodes', self.best_run_multiple_episodes)
