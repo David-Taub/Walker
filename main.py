@@ -125,7 +125,7 @@ class DDPG:
             addative_noise = self.addative_noise_generator()
             multiplier_noise = self.multiplier_noise_generator()
             noised_sampled_actions += addative_noise
-            # noised_sampled_actions *= multiplier_noise
+            noised_sampled_actions *= multiplier_noise
             logging.debug('action {}, noise mul: {}, noise add: {}, total: {}'.format(sampled_actions,
                                                                                       multiplier_noise, addative_noise,
                                                                                       noised_sampled_actions))
