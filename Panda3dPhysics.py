@@ -7,27 +7,23 @@ from panda3d.core import Vec3
 from panda3d.core import Point3
 from panda3d.core import TransformState
 
-JOINT_POWER = 3
-JOINT_SPEED = 2
-PLANE_FRICTION = 0.75
-GRAVITY_ACCELERATION = 9.81
-STEP_TIME = 1
-
 
 class Panda3dPhysics:
-    def __init__(self):
+    def __init__(self, joint_power=3, joint_speed=2, plane_friction=0.75, gravity_acceleration=9.81):
+        self.joint_power = joint_power
+        self.joint_speed = joint_speed
         self.world = panda3d.bullet.BulletWorld()
-        self.world.setGravity(Vec3(0, 0, -GRAVITY_ACCELERATION))
-        self._create_ground()
+        self.world.setGravity(Vec3(0, 0, -gravity_acceleration))
+        self._create_ground(plane_friction)
 
-    def _create_ground(self):
+    def _create_ground(self, plane_friction):
         # Plane
         logging.debug("Ground plane added to physics engine")
         plane_shape = panda3d.bullet.BulletPlaneShape(Vec3(0, 0, 10), 1)
         self.ground_node = panda3d.bullet.BulletRigidBodyNode('Ground')
         self.ground_node.addShape(plane_shape)
         self.ground_node.setTransform(TransformState.makePos(Vec3(0, 0, -1)))
-        self.ground_node.setFriction(PLANE_FRICTION)
+        self.ground_node.setFriction(plane_friction)
         self.world.attachRigidBody(self.ground_node)
 
     def add_walker(self, walker):
@@ -135,7 +131,7 @@ class Panda3dPhysics:
             action = np.zeros([len(self.constraints)])
         for index in range(len(self.constraints)):
             self.constraints[index].enableAngularMotor(
-                True, action[index] * JOINT_SPEED, JOINT_POWER)
+                True, action[index] * self.joint_speed, self.joint_power)
         self.prev_action = action
         self.prev_angles = self.get_joint_angles()
 
@@ -149,4 +145,4 @@ class Panda3dPhysics:
         # return bone_node.getTransform().getPos()
 
     def step(self):
-        self.world.doPhysics(STEP_TIME)
+        self.world.doPhysics(1)
