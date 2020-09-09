@@ -37,7 +37,7 @@ class DDPG:
 
         self.env = Environment(Shape.Worm())
         self.checkpoint_dir = os.path.join(os.path.dirname(__file__), 'mlflow')
-        self.best_run_multiple_episodes = 0
+        self.best_run = 0
         self.addative_noise_generator = noise_generators.OUActionNoise(output_size=self.env.action_size)
         self.multiplier_noise_generator = noise_generators.MarkovSaltPepperNoise(output_size=self.env.action_size)
 
@@ -245,18 +245,18 @@ class DDPG:
                 mlflow.keras.log_model(self.target_critic, 'target_critic')
                 mlflow.keras.log_model(self.actor_model, 'actor_model')
                 mlflow.keras.log_model(self.critic_model, 'critic_model')
-                if average_reward_test > self.best_run_multiple_episodes:
-                    self.best_run_multiple_episodes = average_reward_test
+                if average_reward_test > self.best_run:
+                    self.best_run = average_reward_test
                     self.save_models()
                 else:
                     self.load_models()
                 logging.info(
                     "Test Episodes {}: Avg Reward: {:0.1f} (best: {:0.1f})".format(episode_index,
                                                                                    average_reward_test,
-                                                                                   self.best_run_multiple_episodes))
+                                                                                   self.best_run))
                 # mlflow.log_metric('episode_noise_level', noise_level)
                 mlflow.log_metric('episode_reward_test', average_reward_test)
-                mlflow.log_metric('best_run_multiple_episodes', self.best_run_multiple_episodes)
+                mlflow.log_metric('best_run', self.best_run)
 
     def load_models(self):
         try:
@@ -278,5 +278,5 @@ class DDPG:
 
 
 if __name__ == '__main__':
-    with mlflow.start_run_multiple_episodes():
+    with mlflow.start_run():
         DDPG().run_multiple_episodes()
